@@ -361,6 +361,36 @@ func (configs Configurations) ContainsRootFingerprint(rootFingerprint []byte) bo
 	return false
 }
 
+// SolelyOwnedByRootFingerprint returns true if configs is non-empty and every
+// configuration is a known single-signer configuration owned by rootFingerprint.
+//
+// Nil configs, unknown future config shapes, configs with multiple signer
+// shapes set, and configs owned by another root fingerprint return false so
+// shared-account data does not start syncing until explicitly supported.
+func (configs Configurations) SolelyOwnedByRootFingerprint(rootFingerprint []byte) bool {
+	if len(configs) == 0 || len(rootFingerprint) == 0 {
+		return false
+	}
+	for _, config := range configs {
+		if config == nil {
+			return false
+		}
+		var configRootFingerprint []byte
+		switch {
+		case config.BitcoinSimple != nil && config.EthereumSimple == nil:
+			configRootFingerprint = config.BitcoinSimple.KeyInfo.RootFingerprint
+		case config.EthereumSimple != nil && config.BitcoinSimple == nil:
+			configRootFingerprint = config.EthereumSimple.KeyInfo.RootFingerprint
+		default:
+			return false
+		}
+		if !bytes.Equal(configRootFingerprint, rootFingerprint) {
+			return false
+		}
+	}
+	return true
+}
+
 // FindScriptType returns the index of the first configuration that is a Bitcoin configuration
 // and uses the provided script type. Returns -1 if none is found.
 func (configs Configurations) FindScriptType(scriptType ScriptType) int {

@@ -87,6 +87,100 @@ func TestContainsRootFingerprint(t *testing.T) {
 	require.True(t, configs.ContainsRootFingerprint([]byte{5, 6, 7, 8}))
 }
 
+func TestSolelyOwnedByRootFingerprint(t *testing.T) {
+	xpub := mustXPub(t, &chaincfg.TestNet3Params)
+	rootFingerprint := []byte{1, 2, 3, 4}
+	otherRootFingerprint := []byte{5, 6, 7, 8}
+	bitcoinConfig := NewBitcoinConfiguration(
+		ScriptTypeP2WPKH,
+		rootFingerprint,
+		mustKeypath("m/84'/1'/0'"),
+		xpub,
+	)
+	taprootConfig := NewBitcoinConfiguration(
+		ScriptTypeP2TR,
+		rootFingerprint,
+		mustKeypath("m/86'/1'/0'"),
+		xpub,
+	)
+	ethereumConfig := NewEthereumConfiguration(
+		rootFingerprint,
+		mustKeypath("m/44'/60'/0'/0/0"),
+		xpub,
+	)
+	wrongRootConfig := NewBitcoinConfiguration(
+		ScriptTypeP2WPKH,
+		otherRootFingerprint,
+		mustKeypath("m/84'/1'/0'"),
+		xpub,
+	)
+
+	for _, tt := range []struct {
+		name    string
+		configs Configurations
+		want    bool
+	}{
+		{
+			name:    "bitcoin simple",
+			configs: Configurations{bitcoinConfig},
+			want:    true,
+		},
+		{
+			name:    "ethereum simple",
+			configs: Configurations{ethereumConfig},
+			want:    true,
+		},
+		{
+			name:    "unified bitcoin simple configs",
+			configs: Configurations{bitcoinConfig, taprootConfig},
+			want:    true,
+		},
+		{
+			name:    "wrong root",
+			configs: Configurations{wrongRootConfig},
+			want:    false,
+		},
+		{
+			name:    "mixed roots",
+			configs: Configurations{bitcoinConfig, wrongRootConfig},
+			want:    false,
+		},
+		{
+			name:    "empty configs",
+			configs: Configurations{},
+			want:    false,
+		},
+		{
+			name:    "nil config",
+			configs: Configurations{nil},
+			want:    false,
+		},
+		{
+			name:    "unknown future shape",
+			configs: Configurations{&Configuration{}},
+			want:    false,
+		},
+		{
+			name: "multiple simple shapes in one config",
+			configs: Configurations{{
+				BitcoinSimple:  bitcoinConfig.BitcoinSimple,
+				EthereumSimple: ethereumConfig.EthereumSimple,
+			}},
+			want: false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(
+				t,
+				tt.want,
+				tt.configs.SolelyOwnedByRootFingerprint(rootFingerprint),
+			)
+		})
+	}
+
+	require.False(t, Configurations{bitcoinConfig}.SolelyOwnedByRootFingerprint(nil))
+}
+
 func TestFindScriptType(t *testing.T) {
 	xpub, err := hdkeychain.NewMaster(make([]byte, 32), &chaincfg.TestNet3Params)
 	require.NoError(t, err)
