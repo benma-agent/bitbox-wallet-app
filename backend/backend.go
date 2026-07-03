@@ -3,6 +3,8 @@
 package backend
 
 import (
+	"context"
+	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
 	"maps"
@@ -22,6 +24,7 @@ import (
 	accountsTypes "github.com/BitBoxSwiss/bitbox-wallet-app/backend/accounts/types"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/arguments"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/banners"
+	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/bitboxsync"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc/addresses"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc/blockchain"
@@ -114,6 +117,15 @@ var fixedURLWhitelist = []string{
 	"https://docs.swapkit.dev/",
 	// Others
 	"https://cointracking.info/import/bitbox/",
+}
+
+const defaultBitBoxSyncBaseURL = "https://bitboxsync.shiftcrypto.dev"
+
+func bitboxSyncBaseURL() string {
+	if baseURL, ok := os.LookupEnv("BITBOXSYNC_BASE_URL"); ok && baseURL != "" {
+		return baseURL
+	}
+	return defaultBitBoxSyncBaseURL
 }
 
 // event are events emitted by the backend.
@@ -285,6 +297,12 @@ type Backend struct {
 
 	// ethupdater takes care of updating ETH accounts.
 	ethupdater *eth.Updater
+
+	bitboxSync *bitboxsync.Service
+
+	// skipETHInitialSync suppresses the per-account ETH init refresh while startup loads persisted
+	// accounts, so the updater's initial batch refresh is the only startup sync round.
+	skipETHInitialSync bool
 }
 
 // NewBackend creates a new backend with the given arguments.
@@ -343,6 +361,19 @@ func NewBackend(arguments *arguments.Arguments, environment Environment) (*Backe
 	backend.httpClient = hclient
 	backend.ethupdater = eth.NewUpdater(accountUpdate, backend.httpClient, backend.etherScanRateLimiter, backend.updateETHAccounts)
 	backend.enqueueETHUpdateForAllAccountsAsync = backend.ethupdater.EnqueueUpdateForAllAccountsAsync
+	backend.bitboxSync = bitboxsync.New(bitboxsync.Config{
+		BaseURL:    bitboxSyncBaseURL(),
+		DataDir:    filepath.Join(arguments.MainDirectoryPath(), "bitboxsync"),
+		HTTPClient: backend.httpClient,
+		Accounts: func() []accounts.Interface {
+			return []accounts.Interface(backend.Accounts())
+		},
+		SetAccountName:          backend.setSyncedAccountName,
+		SetAccountNameIfCurrent: backend.setAccountNameIfCurrent,
+		NotifyTxNotesChanged:    backend.notifyTxNotesChanged,
+		NotifyAuthStatusChanged: backend.notifyBitBoxSyncAuthStatusChanged,
+		Log:                     log.WithField("group", "bitboxsync"),
+	})
 
 	backend.ratesUpdater = backend.newRatesUpdater()
 
@@ -423,6 +454,22 @@ func (backend *Backend) notifyNewTxs(account accounts.Interface) {
 			backend.log.WithError(err).Error("error marking notified")
 		}
 	}
+}
+
+func (backend *Backend) notifyTxNotesChanged(accountCode accountsTypes.Code) {
+	backend.Notify(observable.Event{
+		Subject: fmt.Sprintf("account/%s/%s", accountCode, accountsTypes.EventTransactionsChanged),
+		Action:  action.Reload,
+		Object:  nil,
+	})
+}
+
+func (backend *Backend) notifyBitBoxSyncAuthStatusChanged(string) {
+	backend.Notify(observable.Event{
+		Subject: "bitboxsync/auth-status",
+		Action:  action.Reload,
+		Object:  nil,
+	})
 }
 
 // Config returns the app config.
@@ -683,6 +730,238 @@ func (backend *Backend) Testing() bool {
 	return backend.testing
 }
 
+// BitBoxSyncStatus describes BitBoxSync state as exposed by the backend API.
+type BitBoxSyncStatus struct {
+	// BaseURL is the BitBoxSync server URL used by this app.
+	BaseURL string `json:"baseURL"`
+	// Keystores maps root fingerprints to backend-enriched sync state.
+	Keystores map[string]BitBoxSyncKeystoreStatus `json:"keystores"`
+}
+
+// BitBoxSyncKeystoreStatus describes backend-enriched BitBoxSync state for one keystore.
+type BitBoxSyncKeystoreStatus struct {
+	// Name is the user-visible keystore name from app config.
+	Name string `json:"name"`
+	// Status is the runner-owned sync/runtime/auth state.
+	Status bitboxsync.KeystoreStatus `json:"status"`
+}
+
+// BitBoxSyncStatus returns the BitBoxSync status.
+func (backend *Backend) BitBoxSyncStatus() BitBoxSyncStatus {
+	status := BitBoxSyncStatus{
+		BaseURL:   bitboxSyncBaseURL(),
+		Keystores: map[string]BitBoxSyncKeystoreStatus{},
+	}
+	if backend.bitboxSync == nil {
+		return status
+	}
+	syncStatus := backend.bitboxSync.Status()
+	status.BaseURL = syncStatus.BaseURL
+	for _, keystoreConfig := range backend.config.AccountsConfig().Keystores {
+		if keystoreConfig.BitBoxSyncState != config.BitBoxSyncStateEnabled {
+			continue
+		}
+		rootFingerprintHex := hex.EncodeToString(keystoreConfig.RootFingerprint)
+		keystoreSyncStatus := syncStatus.Keystores[rootFingerprintHex]
+		keystoreStatus := BitBoxSyncKeystoreStatus{
+			Name:   keystoreConfig.Name,
+			Status: keystoreSyncStatus,
+		}
+		if _, err := bitBoxSyncPublicIdentityFromConfig(keystoreConfig.BitBoxSyncIdentity); err != nil {
+			// Config says BitBoxSync is enabled, but the cached public identity
+			// needed for background startup is missing or invalid. No runner can
+			// report auth status in that state, so synthesize the reconnect
+			// prompt here; Login will refresh the identity in config.
+			keystoreStatus.Status.AuthStatus = bitboxsync.KeystoreAuthStatus{
+				LoginRequired: true,
+			}
+		}
+		status.Keystores[rootFingerprintHex] = keystoreStatus
+	}
+	return status
+}
+
+func (backend *Backend) startEnabledBitBoxSync() {
+	if backend.bitboxSync == nil {
+		return
+	}
+	for _, keystoreConfig := range backend.config.AccountsConfig().Keystores {
+		if keystoreConfig.BitBoxSyncState != config.BitBoxSyncStateEnabled {
+			continue
+		}
+		if keystoreConfig.BitBoxSyncIdentity == nil {
+			continue
+		}
+		publicIdentity, err := bitBoxSyncPublicIdentityFromConfig(keystoreConfig.BitBoxSyncIdentity)
+		if err != nil {
+			backend.log.WithError(err).WithField(
+				"rootFingerprint",
+				hex.EncodeToString(keystoreConfig.RootFingerprint),
+			).Warn("could not auto-start BitBoxSync")
+			continue
+		}
+		rootFingerprint := append([]byte(nil), keystoreConfig.RootFingerprint...)
+		identity, err := bitboxsync.NewCachedIdentity(*publicIdentity, rootFingerprint, backend.ConnectKeystore)
+		if err != nil {
+			backend.log.WithError(err).WithField(
+				"rootFingerprint",
+				hex.EncodeToString(rootFingerprint),
+			).Warn("could not auto-start BitBoxSync")
+			continue
+		}
+		go func() {
+			if _, err := backend.bitboxSync.Start(context.Background(), identity, rootFingerprint); err != nil {
+				backend.log.WithError(err).WithField(
+					"rootFingerprint",
+					hex.EncodeToString(rootFingerprint),
+				).Warn("could not auto-start BitBoxSync")
+			}
+		}()
+	}
+}
+
+// BitBoxSyncEnable enables BitBoxSync for the selected keystore.
+func (backend *Backend) BitBoxSyncEnable(ctx context.Context, rootFingerprint []byte) error {
+	if backend.bitboxSync == nil {
+		return errp.New("BitBoxSync is not available")
+	}
+	if len(rootFingerprint) == 0 {
+		return errp.New("BitBoxSync wallet is required")
+	}
+	ks, err := backend.ConnectKeystore(rootFingerprint)
+	if err != nil {
+		return err
+	}
+	identity, err := ks.BitBoxSyncIdentify()
+	if err != nil {
+		return err
+	}
+	publicIdentity, err := bitboxsync.PublicIdentityFromRaw(identity)
+	if err != nil {
+		return err
+	}
+	if _, err := backend.bitboxSync.Enable(ctx, identity, rootFingerprint); err != nil {
+		return err
+	}
+	return backend.setBitBoxSyncState(rootFingerprint, config.BitBoxSyncStateEnabled, &publicIdentity)
+}
+
+// BitBoxSyncLogin reconnects an enabled keystore to refresh BitBoxSync setup.
+func (backend *Backend) BitBoxSyncLogin(ctx context.Context, rootFingerprint []byte) error {
+	if backend.bitboxSync == nil {
+		return errp.New("BitBoxSync is not available")
+	}
+	if len(rootFingerprint) == 0 {
+		return errp.New("BitBoxSync wallet is required")
+	}
+	ks, err := backend.ConnectKeystore(rootFingerprint)
+	if err != nil {
+		return err
+	}
+	identity, err := ks.BitBoxSyncIdentify()
+	if err != nil {
+		return err
+	}
+	publicIdentity, err := bitboxsync.PublicIdentityFromRaw(identity)
+	if err != nil {
+		return err
+	}
+	if _, err := backend.bitboxSync.Login(ctx, identity, rootFingerprint); err != nil {
+		return err
+	}
+	return backend.setBitBoxSyncState(rootFingerprint, config.BitBoxSyncStateEnabled, &publicIdentity)
+}
+
+// BitBoxSyncNow performs a foreground BitBoxSync pass.
+func (backend *Backend) BitBoxSyncNow(ctx context.Context, rootFingerprint []byte) error {
+	if backend.bitboxSync == nil {
+		return errp.New("BitBoxSync is not available")
+	}
+	return backend.bitboxSync.SyncNow(ctx, rootFingerprint)
+}
+
+// BitBoxSyncSchedule asks BitBoxSync to run soon if it is available and
+// enabled.
+func (backend *Backend) BitBoxSyncSchedule() {
+	if backend.bitboxSync == nil {
+		return
+	}
+	backend.bitboxSync.ScheduleSync()
+}
+
+// BitBoxSyncDisable disables BitBoxSync and forgets locally cached sync
+// secrets. Wallet data and non-secret sync state are kept.
+func (backend *Backend) BitBoxSyncDisable(rootFingerprint []byte) error {
+	if backend.bitboxSync == nil {
+		return nil
+	}
+	publicIdentity, err := backend.bitBoxSyncPublicIdentity(rootFingerprint)
+	if err != nil && backend.log != nil {
+		backend.log.WithError(err).WithField("rootFingerprint", hex.EncodeToString(rootFingerprint)).
+			Warn("could not load cached BitBoxSync identity")
+	}
+	if err := backend.bitboxSync.Disable(rootFingerprint, publicIdentity); err != nil {
+		return err
+	}
+	return backend.setBitBoxSyncState(rootFingerprint, config.BitBoxSyncStateDisabled, nil)
+}
+
+func (backend *Backend) bitBoxSyncPublicIdentity(rootFingerprint []byte) (*bitboxsync.PublicIdentity, error) {
+	keystoreConfig, err := backend.config.AccountsConfig().LookupKeystore(rootFingerprint)
+	if err != nil {
+		return nil, err
+	}
+	return bitBoxSyncPublicIdentityFromConfig(keystoreConfig.BitBoxSyncIdentity)
+}
+
+func (backend *Backend) setBitBoxSyncState(
+	rootFingerprint []byte,
+	state config.BitBoxSyncState,
+	publicIdentity *bitboxsync.PublicIdentity,
+) error {
+	if err := backend.config.ModifyAccountsConfig(func(accountsConfig *config.AccountsConfig) error {
+		keystoreConfig, err := accountsConfig.LookupKeystore(rootFingerprint)
+		if err != nil {
+			return err
+		}
+		keystoreConfig.BitBoxSyncState = state
+		if state == config.BitBoxSyncStateEnabled && publicIdentity != nil {
+			keystoreConfig.BitBoxSyncIdentity = bitBoxSyncIdentityToConfig(*publicIdentity)
+		} else if state != config.BitBoxSyncStateEnabled {
+			keystoreConfig.BitBoxSyncIdentity = nil
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	// Auth status is derived from accounts config as well as service events.
+	backend.notifyBitBoxSyncAuthStatusChanged(hex.EncodeToString(rootFingerprint))
+	return nil
+}
+
+func bitBoxSyncPublicIdentityFromConfig(identity *config.BitBoxSyncIdentity) (*bitboxsync.PublicIdentity, error) {
+	if identity == nil {
+		return nil, errp.New("BitBoxSync identity is missing")
+	}
+	publicIdentity := bitboxsync.PublicIdentity{
+		Kind:          identity.Kind,
+		AuthPublicKey: ed25519.PublicKey(append([]byte(nil), identity.AuthPublicKey...)),
+		WrapPublicKey: append([]byte(nil), identity.WrapPublicKey...),
+	}
+	if err := publicIdentity.Validate(); err != nil {
+		return nil, err
+	}
+	return &publicIdentity, nil
+}
+
+func bitBoxSyncIdentityToConfig(identity bitboxsync.PublicIdentity) *config.BitBoxSyncIdentity {
+	return &config.BitBoxSyncIdentity{
+		Kind:          identity.Kind,
+		AuthPublicKey: append([]byte(nil), identity.AuthPublicKey...),
+		WrapPublicKey: append([]byte(nil), identity.WrapPublicKey...),
+	}
+}
+
 // Accounts returns the current accounts of the backend.
 func (backend *Backend) Accounts() AccountsList {
 	defer backend.accountsAndKeystoreLock.RLock()()
@@ -729,6 +1008,7 @@ func (backend *Backend) Start() <-chan interface{} {
 	defer backend.accountsAndKeystoreLock.Lock()()
 	backend.initPersistedAccounts(accountLoadOptions{skipETHInitialSync: true})
 	backend.emitAccountsStatusChanged()
+	backend.startEnabledBitBoxSync()
 
 	backend.ratesUpdater.StartCurrentRates()
 	backend.configureHistoryExchangeRates()
@@ -1148,6 +1428,11 @@ func (backend *Backend) Close() error {
 	// which acquires the same lock.
 	if backend.usbManager != nil {
 		backend.usbManager.Close()
+	}
+	if backend.bitboxSync != nil {
+		if err := backend.bitboxSync.Close(); err != nil {
+			backend.log.WithError(err).Error("could not close BitBoxSync")
+		}
 	}
 
 	defer backend.accountsAndKeystoreLock.Lock()()

@@ -545,22 +545,12 @@ func (backend *Backend) LookupInsuredAccounts(accountCode accountsTypes.Code) ([
 	return bitsuranceAccounts, nil
 }
 
-// defaultAccountName returns a default name for a new account. The first account is the coin name,
-// the following accounts is the coin name followed by the account number. Note: `accountNumber` is
-// 0-indexed, so `accountNumber 1` results in e.g. "Bitcoin 2".
-func defaultAccountName(coin coinpkg.Coin, accountNumber uint16) string {
-	if accountNumber > 0 {
-		return fmt.Sprintf("%s %d", coin.Name(), accountNumber+1)
-	}
-	return coin.Name()
-}
-
 func configuredAccountName(coin coinpkg.Coin, accountConfig *config.Account) (string, error) {
 	accountNumber, err := accountConfig.SigningConfigurations.AccountNumber()
 	if err != nil {
 		return coin.Name(), err
 	}
-	return defaultAccountName(coin, accountNumber), nil
+	return accounts.DefaultAccountNameForNumber(coin, accountNumber), nil
 }
 
 // createAndPersistAccountConfig adds an account for the given coin and account number. The account
@@ -587,7 +577,7 @@ func (backend *Backend) createAndPersistAccountConfig(
 		return "", err
 	}
 	if name == "" {
-		name = defaultAccountName(accountCoin, accountNumber)
+		name = accounts.DefaultAccountNameForNumber(accountCoin, accountNumber)
 	}
 
 	// v0 prefix: in case this code turns out to be not unique in the future, we can switch to 'v1-'
@@ -648,7 +638,7 @@ func (backend *Backend) CanAddAccount(coinCode coinpkg.Code, keystore keystore.K
 	if err != nil {
 		return "", false
 	}
-	return defaultAccountName(coin, accountNumber), true
+	return accounts.DefaultAccountNameForNumber(coin, accountNumber), true
 }
 
 // CreateAndPersistAccountConfig checks if an account for the given coin can be added, and if so,
@@ -672,6 +662,7 @@ func (backend *Backend) CreateAndPersistAccountConfig(
 		if hiddenAccount != nil {
 			hiddenAccount.HiddenBecauseUnused = false
 			hiddenAccount.Name = name
+			hiddenAccount.NameModifiedAt = new(time.Now().UTC())
 
 			accountCode = hiddenAccount.Code
 			return nil
@@ -689,6 +680,7 @@ func (backend *Backend) CreateAndPersistAccountConfig(
 		return "", err
 	}
 	backend.ReinitializeAccounts()
+	backend.BitBoxSyncSchedule()
 	return accountCode, nil
 }
 
@@ -760,19 +752,121 @@ func (backend *Backend) RenameAccount(accountCode accountsTypes.Code, name strin
 	if name == "" {
 		return errp.New("Name cannot be empty")
 	}
+	nameChanged := false
 	err := backend.config.ModifyAccountsConfig(func(accountsConfig *config.AccountsConfig) error {
 		acct := accountsConfig.Lookup(accountCode)
 		if acct == nil {
 			return errp.Newf("Could not find account %s", accountCode)
 		}
+		if acct.Name == name {
+			return nil
+		}
+		nameChanged = true
 		acct.Name = name
+		acct.NameModifiedAt = new(time.Now().UTC())
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	backend.emitAccountsStatusChanged()
+	if nameChanged {
+		backend.emitAccountsStatusChanged()
+	}
+	backend.BitBoxSyncSchedule()
 	return nil
+}
+
+func (backend *Backend) setSyncedAccountName(
+	accountCode accountsTypes.Code,
+	name string,
+	modifiedAt time.Time,
+) error {
+	if name == "" {
+		return errp.New("Name cannot be empty")
+	}
+	nameChanged := false
+	err := backend.config.ModifyAccountsConfig(func(accountsConfig *config.AccountsConfig) error {
+		acct := accountsConfig.Lookup(accountCode)
+		if acct == nil {
+			return errp.Newf("Could not find account %s", accountCode)
+		}
+		if acct.Name == name && accountNameModifiedAtEqual(acct.NameModifiedAt, modifiedAt) {
+			return nil
+		}
+		if acct.Name != name {
+			nameChanged = true
+		}
+		acct.Name = name
+		acct.NameModifiedAt = accountNameModifiedAtPtr(modifiedAt)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if nameChanged {
+		backend.emitAccountsStatusChanged()
+	}
+	return nil
+}
+
+func (backend *Backend) setAccountNameIfCurrent(
+	accountCode accountsTypes.Code,
+	current string,
+	currentModifiedAt time.Time,
+	currentFound bool,
+	name string,
+	modifiedAt time.Time,
+) (bool, error) {
+	if name == "" {
+		return false, errp.New("Name cannot be empty")
+	}
+	replaced := false
+	nameChanged := false
+	err := backend.config.ModifyAccountsConfig(func(accountsConfig *config.AccountsConfig) error {
+		acct := accountsConfig.Lookup(accountCode)
+		if acct == nil {
+			return errp.Newf("Could not find account %s", accountCode)
+		}
+		existingFound := acct.Name != ""
+		if existingFound != currentFound {
+			return nil
+		}
+		if currentFound &&
+			(acct.Name != current || !accountNameModifiedAtEqual(acct.NameModifiedAt, currentModifiedAt)) {
+			return nil
+		}
+		replaced = true
+		if acct.Name == name && accountNameModifiedAtEqual(acct.NameModifiedAt, modifiedAt) {
+			return nil
+		}
+		if acct.Name != name {
+			nameChanged = true
+		}
+		acct.Name = name
+		acct.NameModifiedAt = accountNameModifiedAtPtr(modifiedAt)
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	if nameChanged {
+		backend.emitAccountsStatusChanged()
+	}
+	return replaced, nil
+}
+
+func accountNameModifiedAtPtr(modifiedAt time.Time) *time.Time {
+	if modifiedAt.IsZero() {
+		return nil
+	}
+	return new(modifiedAt.UTC())
+}
+
+func accountNameModifiedAtEqual(stored *time.Time, value time.Time) bool {
+	if stored == nil {
+		return value.IsZero()
+	}
+	return stored.Equal(value)
 }
 
 // updateKeystoreName persists a keystore name change and re-sorts the loaded accounts accordingly.
@@ -1134,6 +1228,7 @@ func (backend *Backend) persistBTCAccountConfig(
 		HiddenBecauseUnused:   hiddenBecauseUnused,
 		CoinCode:              coin.Code(),
 		Name:                  name,
+		NameModifiedAt:        newAccountNameModifiedAt(hiddenBecauseUnused),
 		Code:                  code,
 		SigningConfigurations: signingConfigurations,
 	}, accountsConfig)
@@ -1181,10 +1276,18 @@ func (backend *Backend) persistETHAccountConfig(
 		HiddenBecauseUnused:   hiddenBecauseUnused,
 		CoinCode:              coin.Code(),
 		Name:                  name,
+		NameModifiedAt:        newAccountNameModifiedAt(hiddenBecauseUnused),
 		Code:                  code,
 		SigningConfigurations: signingConfigurations,
 		ActiveTokens:          activeTokens,
 	}, accountsConfig)
+}
+
+func newAccountNameModifiedAt(hiddenBecauseUnused bool) *time.Time {
+	if hiddenBecauseUnused {
+		return nil
+	}
+	return new(time.Now().UTC())
 }
 
 // The accountsAndKeystoreLock must be held when calling this function.

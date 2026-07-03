@@ -1,0 +1,18 @@
+.content {
+    align-items: center;
+    display: flex;
+    gap: var(--space-half);
+    justify-content: space-between;
+    width: 100%;
+}
+
+.content span {
+    flex: 1;
+}
+
+@media (max-width: 768px) {
+    .content {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}

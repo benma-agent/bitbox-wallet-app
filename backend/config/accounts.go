@@ -40,8 +40,11 @@ type Account struct {
 	// when Watchonly is enabled should do this.
 	Watch *bool `json:"watch"`
 
-	CoinCode              coin.Code              `json:"coinCode"`
-	Name                  string                 `json:"name"`
+	CoinCode coin.Code `json:"coinCode"`
+	Name     string    `json:"name"`
+	// NameModifiedAt is used by BitBoxSync to resolve account-name conflicts.
+	// It is nil for account names saved before sync tracked edit times.
+	NameModifiedAt        *time.Time             `json:"nameModifiedAt,omitempty"`
 	Code                  accountsTypes.Code     `json:"code"`
 	SigningConfigurations signing.Configurations `json:"configurations"`
 	// ReceiveScriptType stores the user's receive address type for this account.
@@ -80,6 +83,18 @@ func (acct *Account) SetReceiveScriptType(scriptType signing.ScriptType) error {
 	return nil
 }
 
+// BitBoxSyncState stores local BitBoxSync UX state for one keystore. The empty
+// value is treated the same as unknown for configs written before this field
+// existed.
+type BitBoxSyncState string
+
+const (
+	BitBoxSyncStateUnknown   BitBoxSyncState = "unknown"
+	BitBoxSyncStateEnabled   BitBoxSyncState = "enabled"
+	BitBoxSyncStateDismissed BitBoxSyncState = "dismissed"
+	BitBoxSyncStateDisabled  BitBoxSyncState = "disabled"
+)
+
 // Keystore holds information related to keystores such as the BitBox02.
 type Keystore struct {
 	// Watchonly determines if accounts of this keystore should be loaded even if the keystore is not connected.
@@ -90,6 +105,11 @@ type Keystore struct {
 	// nil means it has not been checked yet.
 	// false means the reminder is permanently suppressed.
 	BackupReminderAllowed *bool `json:"backupReminderAllowed,omitempty"`
+	// BitBoxSyncState is local UX state for prompting/enabling BitBoxSync. It must not be synced.
+	BitBoxSyncState BitBoxSyncState `json:"bitBoxSyncState,omitempty"`
+	// BitBoxSyncIdentity stores non-secret public identity material used to run BitBoxSync for
+	// this keystore after app restart without prompting unless signing or unwrapping is needed.
+	BitBoxSyncIdentity *BitBoxSyncIdentity `json:"bitBoxSyncIdentity,omitempty"`
 	// The root fingerprint is the first 32 bits of the hash160 of the pubkey at the keypath m/.
 	// https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#key-identifiers It serves as
 	// an identifier for the keystore. Collisions are possible but the chance is very small.
@@ -100,6 +120,13 @@ type Keystore struct {
 	// this field yet but it may be helpful in the future if we want to remind users to connect
 	// their device, e.g. to check that they still know their device password.
 	LastConnected time.Time `json:"lastConnected"`
+}
+
+// BitBoxSyncIdentity stores public BitBoxSync identity material for one keystore.
+type BitBoxSyncIdentity struct {
+	Kind          string         `json:"kind"`
+	AuthPublicKey jsonp.HexBytes `json:"authPublicKey"`
+	WrapPublicKey jsonp.HexBytes `json:"wrapPublicKey"`
 }
 
 // AccountsConfig persists the list of accounts added to the app.
@@ -168,7 +195,10 @@ func (cfg *AccountsConfig) GetOrAddKeystore(rootFingerprint []byte) *Keystore {
 		return ks
 	}
 
-	ks = &Keystore{RootFingerprint: rootFingerprint}
+	ks = &Keystore{
+		BitBoxSyncState: BitBoxSyncStateUnknown,
+		RootFingerprint: rootFingerprint,
+	}
 	cfg.Keystores = append(cfg.Keystores, ks)
 	return ks
 }

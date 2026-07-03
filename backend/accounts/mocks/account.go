@@ -67,7 +67,7 @@ var _ accounts.Interface = &InterfaceMock{}
 //			OfflineFunc: func() error {
 //				panic("mock out the Offline method")
 //			},
-//			SendTxFunc: func(txNote string) (string, error) {
+//			SendTxFunc: func() (string, error) {
 //				panic("mock out the SendTx method")
 //			},
 //			SetTxNoteFunc: func(txID string, note string) error {
@@ -141,7 +141,7 @@ type InterfaceMock struct {
 	OfflineFunc func() error
 
 	// SendTxFunc mocks the SendTx method.
-	SendTxFunc func(txNote string) (string, error)
+	SendTxFunc func() (string, error)
 
 	// SetTxNoteFunc mocks the SetTxNote method.
 	SetTxNoteFunc func(txID string, note string) error
@@ -216,8 +216,6 @@ type InterfaceMock struct {
 		}
 		// SendTx holds details about calls to the SendTx method.
 		SendTx []struct {
-			// TxNote is the txNote argument value.
-			TxNote string
 		}
 		// SetTxNote holds details about calls to the SetTxNote method.
 		SetTxNote []struct {
@@ -692,19 +690,16 @@ func (mock *InterfaceMock) OfflineCalls() []struct {
 }
 
 // SendTx calls SendTxFunc.
-func (mock *InterfaceMock) SendTx(txNote string) (string, error) {
+func (mock *InterfaceMock) SendTx() (string, error) {
 	if mock.SendTxFunc == nil {
 		panic("InterfaceMock.SendTxFunc: method is nil but Interface.SendTx was just called")
 	}
 	callInfo := struct {
-		TxNote string
-	}{
-		TxNote: txNote,
-	}
+	}{}
 	mock.lockSendTx.Lock()
 	mock.calls.SendTx = append(mock.calls.SendTx, callInfo)
 	mock.lockSendTx.Unlock()
-	return mock.SendTxFunc(txNote)
+	return mock.SendTxFunc()
 }
 
 // SendTxCalls gets all the calls that were made to SendTx.
@@ -712,10 +707,8 @@ func (mock *InterfaceMock) SendTx(txNote string) (string, error) {
 //
 //	len(mockedInterface.SendTxCalls())
 func (mock *InterfaceMock) SendTxCalls() []struct {
-	TxNote string
 } {
 	var calls []struct {
-		TxNote string
 	}
 	mock.lockSendTx.RLock()
 	calls = mock.calls.SendTx

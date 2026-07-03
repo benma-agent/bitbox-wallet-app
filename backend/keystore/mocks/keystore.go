@@ -4,6 +4,7 @@
 package mocks
 
 import (
+	"github.com/BitBoxSwiss/bitboxsync-client-go/raw"
 	btctypes "github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc/types"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/coin"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/keystore"
@@ -26,6 +27,9 @@ var _ keystore.Keystore = &KeystoreMock{}
 //		mockedKeystore := &KeystoreMock{
 //			BTCXPubsFunc: func(coinMoqParam coin.Coin, absoluteKeypaths []signing.AbsoluteKeypath) ([]*hdkeychain.ExtendedKey, error) {
 //				panic("mock out the BTCXPubs method")
+//			},
+//			BitBoxSyncIdentifyFunc: func() (raw.Identity, error) {
+//				panic("mock out the BitBoxSyncIdentify method")
 //			},
 //			CanSignMessageFunc: func(code coin.Code) bool {
 //				panic("mock out the CanSignMessage method")
@@ -103,6 +107,9 @@ type KeystoreMock struct {
 	// BTCXPubsFunc mocks the BTCXPubs method.
 	BTCXPubsFunc func(coinMoqParam coin.Coin, absoluteKeypaths []signing.AbsoluteKeypath) ([]*hdkeychain.ExtendedKey, error)
 
+	// BitBoxSyncIdentifyFunc mocks the BitBoxSyncIdentify method.
+	BitBoxSyncIdentifyFunc func() (raw.Identity, error)
+
 	// CanSignMessageFunc mocks the CanSignMessage method.
 	CanSignMessageFunc func(code coin.Code) bool
 
@@ -177,6 +184,9 @@ type KeystoreMock struct {
 			CoinMoqParam coin.Coin
 			// AbsoluteKeypaths is the absoluteKeypaths argument value.
 			AbsoluteKeypaths []signing.AbsoluteKeypath
+		}
+		// BitBoxSyncIdentify holds details about calls to the BitBoxSyncIdentify method.
+		BitBoxSyncIdentify []struct {
 		}
 		// CanSignMessage holds details about calls to the CanSignMessage method.
 		CanSignMessage []struct {
@@ -304,6 +314,7 @@ type KeystoreMock struct {
 		}
 	}
 	lockBTCXPubs                        sync.RWMutex
+	lockBitBoxSyncIdentify              sync.RWMutex
 	lockCanSignMessage                  sync.RWMutex
 	lockCanVerifyAddress                sync.RWMutex
 	lockCanVerifyExtendedPublicKey      sync.RWMutex
@@ -361,6 +372,33 @@ func (mock *KeystoreMock) BTCXPubsCalls() []struct {
 	mock.lockBTCXPubs.RLock()
 	calls = mock.calls.BTCXPubs
 	mock.lockBTCXPubs.RUnlock()
+	return calls
+}
+
+// BitBoxSyncIdentify calls BitBoxSyncIdentifyFunc.
+func (mock *KeystoreMock) BitBoxSyncIdentify() (raw.Identity, error) {
+	if mock.BitBoxSyncIdentifyFunc == nil {
+		panic("KeystoreMock.BitBoxSyncIdentifyFunc: method is nil but Keystore.BitBoxSyncIdentify was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockBitBoxSyncIdentify.Lock()
+	mock.calls.BitBoxSyncIdentify = append(mock.calls.BitBoxSyncIdentify, callInfo)
+	mock.lockBitBoxSyncIdentify.Unlock()
+	return mock.BitBoxSyncIdentifyFunc()
+}
+
+// BitBoxSyncIdentifyCalls gets all the calls that were made to BitBoxSyncIdentify.
+// Check the length with:
+//
+//	len(mockedKeystore.BitBoxSyncIdentifyCalls())
+func (mock *KeystoreMock) BitBoxSyncIdentifyCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockBitBoxSyncIdentify.RLock()
+	calls = mock.calls.BitBoxSyncIdentify
+	mock.lockBitBoxSyncIdentify.RUnlock()
 	return calls
 }
 

@@ -34,8 +34,9 @@ import (
 
 // Handlers provides a web api to the account.
 type Handlers struct {
-	account accounts.Interface
-	log     *logrus.Entry
+	account      accounts.Interface
+	log          *logrus.Entry
+	scheduleSync func()
 }
 
 func formatAddressForDisplay(account accounts.Interface, address string) string {
@@ -44,8 +45,14 @@ func formatAddressForDisplay(account accounts.Interface, address string) string 
 
 // NewHandlers creates a new Handlers instance.
 func NewHandlers(
-	handleFunc func(string, func(*http.Request) (interface{}, error)) *mux.Route, log *logrus.Entry) *Handlers {
-	handlers := &Handlers{log: log}
+	handleFunc func(string, func(*http.Request) (interface{}, error)) *mux.Route,
+	log *logrus.Entry,
+	scheduleSync func(),
+) *Handlers {
+	handlers := &Handlers{
+		log:          log,
+		scheduleSync: scheduleSync,
+	}
 
 	handleFunc("/init", handlers.postInit).Methods("POST")
 	handleFunc("/status", handlers.getAccountStatus).Methods("GET")
@@ -471,7 +478,7 @@ func (handlers *Handlers) postAccountSendTx(r *http.Request) (interface{}, error
 		// not return but only log an error here.
 		handlers.log.WithError(err).Error("Failed to unmarshal transaction note")
 	}
-	txID, err := handlers.account.SendTx(txNote)
+	txID, err := handlers.account.SendTx()
 	if errp.Cause(err) == keystore.ErrSigningAborted || errp.Cause(err) == errp.ErrUserAbort {
 		return response{Success: false, Aborted: true}, nil
 	}
@@ -489,6 +496,18 @@ func (handlers *Handlers) postAccountSendTx(r *http.Request) (interface{}, error
 		}
 
 		return result, nil
+	}
+	if txNote != "" {
+		if err := handlers.setTxNote(txID, txNote); err != nil {
+			// The transaction was already broadcast. Keep the send response
+			// successful and still try to store the note locally.
+			handlers.log.WithError(err).Error("Failed to save transaction note when sending a tx")
+			if fallbackErr := handlers.account.SetTxNote(txID, txNote); fallbackErr != nil {
+				handlers.log.WithError(fallbackErr).Error("Failed to save transaction note locally after sending a tx")
+			} else {
+				handlers.scheduleBitBoxSync()
+			}
+		}
 	}
 	return response{Success: true, TxID: txID}, nil
 }
@@ -751,7 +770,27 @@ func (handlers *Handlers) postSetTxNote(r *http.Request) (interface{}, error) {
 		return nil, errp.WithStack(err)
 	}
 
-	return nil, handlers.account.SetTxNote(args.InternalTxID, args.Note)
+	if err := handlers.setTxNote(args.InternalTxID, args.Note); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (handlers *Handlers) setTxNote(internalTxID string, note string) error {
+	if err := handlers.account.SetTxNote(internalTxID, note); err != nil {
+		return err
+	}
+	handlers.scheduleBitBoxSync()
+	return nil
+}
+
+func (handlers *Handlers) scheduleBitBoxSync() {
+	// BitBoxSync reads app-owned note storage during its next run. The write
+	// above remains the source of truth; this only makes the background run
+	// happen promptly.
+	if handlers.scheduleSync != nil {
+		handlers.scheduleSync()
+	}
 }
 
 type signingResponse struct {

@@ -412,6 +412,18 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 	t.Run("bitbox02Like", func(t *testing.T) {
 		b := newBackend(t, testnetDisabled, regtestDisabled)
 		defer b.Close()
+		requireAccountConfig := func(expected *config.Account, actual *config.Account, nameModifiedAt bool) {
+			t.Helper()
+			actualCopy := *actual
+			if nameModifiedAt {
+				require.NotNil(t, actualCopy.NameModifiedAt)
+				require.False(t, actualCopy.NameModifiedAt.IsZero())
+			} else {
+				require.Nil(t, actualCopy.NameModifiedAt)
+			}
+			actualCopy.NameModifiedAt = nil
+			require.Equal(t, expected, &actualCopy)
+		}
 
 		// This adds one BTC/LTC/ETH by default.
 		b.registerKeystore(bitbox02LikeKeystore)
@@ -425,7 +437,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "v0-55555555-btc-1", string(acctCode))
 
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				CoinCode: "btc",
 				Name:     "bitcoin 2",
@@ -437,6 +449,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-btc-1"),
+			true,
 		)
 
 		// Add another Litecoin account.
@@ -447,7 +460,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "v0-55555555-ltc-1", string(acctCode))
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				CoinCode: "ltc",
 				Name:     "litecoin 2",
@@ -458,6 +471,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-ltc-1"),
+			true,
 		)
 
 		// Add another Ethereum account.
@@ -468,7 +482,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "v0-55555555-eth-1", string(acctCode))
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				CoinCode: "eth",
 				Name:     "ethereum 2",
@@ -478,6 +492,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-eth-1"),
+			true,
 		)
 
 		// Add another Bitcoin account.
@@ -488,7 +503,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "v0-55555555-btc-2", string(acctCode))
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				CoinCode: "btc",
 				Name:     "bitcoin 3",
@@ -500,6 +515,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-btc-2"),
+			true,
 		)
 
 		// Add another Litecoin account.
@@ -510,7 +526,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "v0-55555555-ltc-2", string(acctCode))
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				CoinCode: "ltc",
 				Name:     "litecoin 2",
@@ -521,6 +537,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-ltc-2"),
+			true,
 		)
 
 		// Add another Ethereum account.
@@ -531,7 +548,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "v0-55555555-eth-2", string(acctCode))
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				CoinCode: "eth",
 				Name:     "ethereum 2",
@@ -541,11 +558,12 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-eth-2"),
+			true,
 		)
 
 		// Add BTC/LTC hidden accounts for scanning.
 		b.maybeAddHiddenUnusedAccounts()
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				HiddenBecauseUnused: true,
 				CoinCode:            "btc",
@@ -558,6 +576,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-btc-3"),
+			false,
 		)
 		// Add another Bitcoin account. The previously added hidden account is unhidden instead of
 		// adding a new one. The name is overwritten.
@@ -568,7 +587,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, "v0-55555555-btc-3", string(acctCode))
-		require.Equal(t,
+		requireAccountConfig(
 			&config.Account{
 				CoinCode: "btc",
 				Name:     "bitcoin 4 new name",
@@ -580,6 +599,7 @@ func TestCreateAndPersistAccountConfig(t *testing.T) {
 				},
 			},
 			b.Config().AccountsConfig().Lookup("v0-55555555-btc-3"),
+			true,
 		)
 
 	})
@@ -1021,7 +1041,10 @@ func TestRenameAccount(t *testing.T) {
 
 	require.NoError(t, b.RenameAccount("v0-55555555-btc-0", "renamed"))
 	require.Equal(t, "renamed", b.Accounts().lookup("v0-55555555-btc-0").Config().Config.Name)
-	require.Equal(t, "renamed", b.config.AccountsConfig().Lookup("v0-55555555-btc-0").Name)
+	persistedAccount := b.config.AccountsConfig().Lookup("v0-55555555-btc-0")
+	require.Equal(t, "renamed", persistedAccount.Name)
+	require.NotNil(t, persistedAccount.NameModifiedAt)
+	require.False(t, persistedAccount.NameModifiedAt.IsZero())
 }
 
 func TestMaybeAddHiddenUnusedAccounts(t *testing.T) {

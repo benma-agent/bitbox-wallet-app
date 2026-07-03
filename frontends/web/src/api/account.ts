@@ -33,6 +33,7 @@ export type TActiveToken = {
 
 export type TKeystore = {
   watchonly: boolean;
+  bitBoxSyncState?: 'unknown' | 'enabled' | 'dismissed' | 'disabled';
   rootFingerprint: string;
   name: string;
   lastConnected: string;

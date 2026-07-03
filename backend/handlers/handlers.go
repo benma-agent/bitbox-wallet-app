@@ -122,6 +122,12 @@ type Backend interface {
 	Bluetooth() *bluetooth.Bluetooth
 	IsOnline() bool
 	ConnectKeystore([]byte) (keystore.Keystore, error)
+	BitBoxSyncStatus() backend.BitBoxSyncStatus
+	BitBoxSyncEnable(context.Context, []byte) error
+	BitBoxSyncLogin(context.Context, []byte) error
+	BitBoxSyncNow(context.Context, []byte) error
+	BitBoxSyncSchedule()
+	BitBoxSyncDisable([]byte) error
 }
 
 // Handlers provides a web api to the backend.
@@ -269,6 +275,12 @@ func NewHandlers(
 	getAPIRouterNoError(apiRouter)("/accounts/eth-account-code", handlers.lookupEthAccountCode).Methods("POST")
 	getAPIRouterNoError(apiRouter)("/notes/export", handlers.postExportNotes).Methods("POST")
 	getAPIRouterNoError(apiRouter)("/notes/import", handlers.postImportNotes).Methods("POST")
+	getAPIRouterNoError(apiRouter)("/bitboxsync/auth-status", handlers.getBitBoxSyncAuthStatus).Methods("GET")
+	getAPIRouterNoError(apiRouter)("/bitboxsync/status", handlers.getBitBoxSyncStatus).Methods("GET")
+	getAPIRouterNoError(apiRouter)("/bitboxsync/enable", handlers.postBitBoxSyncEnable).Methods("POST")
+	getAPIRouterNoError(apiRouter)("/bitboxsync/login", handlers.postBitBoxSyncLogin).Methods("POST")
+	getAPIRouterNoError(apiRouter)("/bitboxsync/sync", handlers.postBitBoxSync).Methods("POST")
+	getAPIRouterNoError(apiRouter)("/bitboxsync/disable", handlers.postBitBoxSyncDisable).Methods("POST")
 
 	getAPIRouterNoError(apiRouter)("/bluetooth/state", handlers.getBluetoothState).Methods("GET")
 	getAPIRouterNoError(apiRouter)("/bluetooth/connect", handlers.postBluetoothConnect).Methods("POST")
@@ -285,9 +297,11 @@ func NewHandlers(
 	getAccountHandlers := func(accountCode accountsTypes.Code) *accountHandlers.Handlers {
 		defer handlersMapLock.Lock()()
 		if _, ok := accountHandlersMap[accountCode]; !ok {
-			accountHandlersMap[accountCode] = accountHandlers.NewHandlers(getAPIRouter(
-				apiRouter.PathPrefix(fmt.Sprintf("/account/%s", accountCode)).Subrouter(),
-			), log)
+			accountHandlersMap[accountCode] = accountHandlers.NewHandlers(
+				getAPIRouter(apiRouter.PathPrefix(fmt.Sprintf("/account/%s", accountCode)).Subrouter()),
+				log,
+				backend.BitBoxSyncSchedule,
+			)
 		}
 		accHandlers := accountHandlersMap[accountCode]
 		log.WithField("account-handlers", accHandlers).Debug("Account handlers")
@@ -1791,6 +1805,96 @@ func (handlers *Handlers) postImportNotes(r *http.Request) interface{} {
 		return result{Success: false, Message: err.Error()}
 	}
 	return result{Success: true, Data: data}
+}
+
+func (handlers *Handlers) getBitBoxSyncStatus(r *http.Request) interface{} {
+	return handlers.backend.BitBoxSyncStatus()
+}
+
+func (handlers *Handlers) getBitBoxSyncAuthStatus(r *http.Request) interface{} {
+	return handlers.backend.BitBoxSyncStatus()
+}
+
+type bitBoxSyncRequest struct {
+	RootFingerprint jsonp.HexBytes `json:"rootFingerprint"`
+}
+
+type bitBoxSyncResult struct {
+	Success      bool                     `json:"success"`
+	ErrorCode    string                   `json:"errorCode,omitempty"`
+	ErrorMessage string                   `json:"errorMessage,omitempty"`
+	Status       backend.BitBoxSyncStatus `json:"status,omitempty"`
+}
+
+func decodeBitBoxSyncRootFingerprint(r *http.Request) ([]byte, error) {
+	var request bitBoxSyncRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return nil, err
+	}
+	if len(request.RootFingerprint) == 0 {
+		return nil, errp.New("BitBoxSync wallet is required")
+	}
+	return []byte(request.RootFingerprint), nil
+}
+
+func (handlers *Handlers) bitBoxSyncResultError(err error) bitBoxSyncResult {
+	result := bitBoxSyncResult{
+		Success:      false,
+		ErrorMessage: err.Error(),
+		Status:       handlers.backend.BitBoxSyncStatus(),
+	}
+	if errp.Cause(err) == errp.ErrUserAbort {
+		result.ErrorCode = errp.ErrUserAbort.Error()
+	}
+	return result
+}
+
+func (handlers *Handlers) postBitBoxSyncEnable(r *http.Request) interface{} {
+	rootFingerprint, err := decodeBitBoxSyncRootFingerprint(r)
+	if err != nil {
+		return handlers.bitBoxSyncResultError(err)
+	}
+	if err := handlers.backend.BitBoxSyncEnable(r.Context(), rootFingerprint); err != nil {
+		handlers.log.WithError(err).Warn("could not enable BitBoxSync")
+		return handlers.bitBoxSyncResultError(err)
+	}
+	return bitBoxSyncResult{Success: true, Status: handlers.backend.BitBoxSyncStatus()}
+}
+
+func (handlers *Handlers) postBitBoxSyncLogin(r *http.Request) interface{} {
+	rootFingerprint, err := decodeBitBoxSyncRootFingerprint(r)
+	if err != nil {
+		return handlers.bitBoxSyncResultError(err)
+	}
+	if err := handlers.backend.BitBoxSyncLogin(r.Context(), rootFingerprint); err != nil {
+		handlers.log.WithError(err).Warn("could not log in BitBoxSync")
+		return handlers.bitBoxSyncResultError(err)
+	}
+	return bitBoxSyncResult{Success: true, Status: handlers.backend.BitBoxSyncStatus()}
+}
+
+func (handlers *Handlers) postBitBoxSync(r *http.Request) interface{} {
+	rootFingerprint, err := decodeBitBoxSyncRootFingerprint(r)
+	if err != nil {
+		return handlers.bitBoxSyncResultError(err)
+	}
+	if err := handlers.backend.BitBoxSyncNow(r.Context(), rootFingerprint); err != nil {
+		handlers.log.WithError(err).Warn("could not sync BitBoxSync")
+		return handlers.bitBoxSyncResultError(err)
+	}
+	return bitBoxSyncResult{Success: true, Status: handlers.backend.BitBoxSyncStatus()}
+}
+
+func (handlers *Handlers) postBitBoxSyncDisable(r *http.Request) interface{} {
+	rootFingerprint, err := decodeBitBoxSyncRootFingerprint(r)
+	if err != nil {
+		return handlers.bitBoxSyncResultError(err)
+	}
+	if err := handlers.backend.BitBoxSyncDisable(rootFingerprint); err != nil {
+		handlers.log.WithError(err).Warn("could not disable BitBoxSync")
+		return handlers.bitBoxSyncResultError(err)
+	}
+	return bitBoxSyncResult{Success: true, Status: handlers.backend.BitBoxSyncStatus()}
 }
 
 func (handlers *Handlers) getBluetoothState(r *http.Request) interface{} {

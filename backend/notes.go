@@ -262,6 +262,7 @@ func (backend *Backend) ImportNotes(jsonLines []byte) (*ImportNotesResult, error
 				}
 				if label != acct.Name {
 					acct.Name = label
+					acct.NameModifiedAt = new(time.Now().UTC())
 					result.AccountCount += 1
 				}
 				return nil
@@ -291,10 +292,18 @@ func (backend *Backend) ImportNotes(jsonLines []byte) (*ImportNotesResult, error
 				return nil, err
 			}
 
-			// It is inefficient to store dump all notes to disk for every imported note, which
-			// happens by using SetTxNote(). This could be optimized in the future.
-			changed, err := account.Notes().SetTxNote(ref, label)
-			if err != nil {
+			accountConfig := account.Config()
+			if accountConfig == nil || accountConfig.Config == nil {
+				continue
+			}
+			// It is inefficient to dump all notes to disk for every imported note,
+			// which happens by using SetTxNote(). This could be optimized in the future.
+			// TODO: Batch imported note writes instead of storing each note separately.
+			changed := true
+			if account.Notes() != nil {
+				changed = account.Notes().TxNote(ref) != label
+			}
+			if err := account.SetTxNote(ref, label); err != nil {
 				return nil, err
 			}
 			if changed {
@@ -305,6 +314,10 @@ func (backend *Backend) ImportNotes(jsonLines []byte) (*ImportNotesResult, error
 
 	if err := scanner.Err(); err != nil {
 		return nil, errp.WithStack(err)
+	}
+
+	if result.AccountCount > 0 || result.TransactionCount > 0 {
+		backend.BitBoxSyncSchedule()
 	}
 
 	// Reflect updated account names in frontend.

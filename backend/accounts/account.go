@@ -3,6 +3,7 @@
 package accounts
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/accounts/notes"
@@ -12,6 +13,32 @@ import (
 	"github.com/BitBoxSwiss/bitbox-wallet-app/util/observable"
 	"github.com/btcsuite/btcd/wire"
 )
+
+// DefaultAccountName returns the generated name for a loaded account.
+func DefaultAccountName(account Interface) (string, bool) {
+	if account == nil || account.Config() == nil || account.Config().Config == nil {
+		return "", false
+	}
+	accountNumber, err := account.Config().Config.SigningConfigurations.AccountNumber()
+	if err != nil {
+		return "", false
+	}
+	accountCoin := account.Coin()
+	if accountCoin == nil {
+		return "", false
+	}
+	return DefaultAccountNameForNumber(accountCoin, accountNumber), true
+}
+
+// DefaultAccountNameForNumber returns the generated name for a coin/account
+// number pair. Account number is 0-indexed, so account number 1 results in e.g.
+// "Bitcoin 2".
+func DefaultAccountNameForNumber(coin coin.Coin, accountNumber uint16) string {
+	if accountNumber > 0 {
+		return fmt.Sprintf("%s %d", coin.Name(), accountNumber+1)
+	}
+	return coin.Name()
+}
 
 // AddressList is a list of addresses.
 type AddressList struct {
@@ -72,7 +99,7 @@ type Interface interface {
 	Balance() (*Balance, error)
 	// SendTx signs and sends the active tx proposal, set by TxProposal, and returns its
 	// id. Errors if none available.
-	SendTx(txNote string) (string, error)
+	SendTx() (string, error)
 	FeeTargets() ([]FeeTarget, FeeTargetCode)
 	TxProposal(*TxProposalArgs) (coin.Amount, coin.Amount, coin.Amount, error)
 	// GetUnusedReceiveAddresses gets a list of list of receive addresses. The result can be one

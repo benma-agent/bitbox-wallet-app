@@ -8,6 +8,7 @@ import { Banner } from './banner';
 import { MobileDataWarning } from './mobiledatawarning';
 import { Offline } from './offline';
 import { SDCardWarning } from './sdcard';
+import { BitBoxSyncSessionBanners } from './bitboxsync-session';
 
 type Props = {
   code?: AccountCode;
@@ -21,6 +22,7 @@ export const GlobalBanners = ({
   return (
     <>
       <Testing />
+      <BitBoxSyncSessionBanners />
       <Update />
       <Banner msgKey="bitbox01" />
       <Banner msgKey="bitbox02" />

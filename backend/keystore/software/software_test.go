@@ -3,8 +3,11 @@
 package software
 
 import (
+	"encoding/hex"
 	"testing"
 
+	"github.com/BitBoxSwiss/bitboxsync-client-go/protocol"
+	"github.com/BitBoxSwiss/bitboxsync-client-go/raw"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc/maketx"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/coin"
@@ -13,7 +16,6 @@ import (
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/signing"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/util/socksproxy"
 	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
-
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/ethereum/go-ethereum/accounts"
@@ -43,6 +45,26 @@ func TestRootFingerprint(t *testing.T) {
 	require.NoError(t, err)
 	// Verified by comparing to the root fingerprint produced by the BitBox02 and Electrum.
 	require.Equal(t, []byte{0xfb, 0x70, 0x89, 0xbd}, rootFingerprint)
+}
+
+func TestBitBoxSyncIdentify(t *testing.T) {
+	keystore := makeKeystore(t)
+	identity, err := keystore.BitBoxSyncIdentify()
+	require.NoError(t, err)
+	require.Equal(t, protocol.IdentityKindKeystore, identity.Kind())
+	keyID := bitBoxSyncIdentityKeyID(identity)
+	require.NotEmpty(t, keyID)
+	identity, err = keystore.BitBoxSyncIdentify()
+	require.NoError(t, err)
+	require.Equal(t, keyID, bitBoxSyncIdentityKeyID(identity))
+	identity, err = makeKeystore(t).BitBoxSyncIdentify()
+	require.NoError(t, err)
+	require.Equal(t, bitBoxSyncIdentityKeyID(identity), keyID)
+}
+
+func bitBoxSyncIdentityKeyID(identity raw.Identity) string {
+	keyID := protocol.KeyIDFromAuthPublicKey(identity.AuthPublicKey())
+	return hex.EncodeToString(keyID[:])
 }
 
 func TestCanSignMessage(t *testing.T) {

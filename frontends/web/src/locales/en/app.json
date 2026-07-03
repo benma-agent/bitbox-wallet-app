@@ -215,6 +215,16 @@
     "upgradeTitle": "Upgrading BitBox firmware",
     "upgradeTitle_install": "Installing BitBox firmware"
   },
+  "bitBoxSync": {
+    "auth": {
+      "loginRequired": "BitBoxSync has stopped syncing {{name}} because the session expired. Connect again to resume syncing.",
+      "refreshRecommended": {
+        "action": "Connect again to keep syncing without interruption.",
+        "days": "The BitBoxSync session for {{name}} expires in about {{days}} days.",
+        "unknown": "The BitBoxSync session for {{name}} expires soon."
+      }
+    }
+  },
   "bitbox": {
     "error": {
       "e10000": "Current device password incorrect.",
@@ -439,6 +449,7 @@
     "back": "Back",
     "changepin": "Change device password",
     "check": "Check backup",
+    "connect": "Connect",
     "continue": "Continue",
     "copy": "Copy",
     "copyAddress": "Copy address",
@@ -1020,10 +1031,12 @@
     "buy_crypto": "Buy crypto",
     "calculating": "Calculating…",
     "close": "Close",
+    "disable": "Disable",
     "enable": "Enable",
     "enabled_false": "Disabled",
     "enabled_true": "Enabled",
     "insure": "Insure",
+    "lastError": "Last error: {{error}}",
     "max": "Max",
     "new": "New",
     "noOptionOnIos": "Not available on iOS",
@@ -1627,6 +1640,14 @@
       "toggleSats": {
         "description": "Enable or disable Satoshis."
       }
+    },
+    "sync": {
+      "bitboxSync": {
+        "description": "Sync server: {{url}}",
+        "lastSync": "Last sync: {{time}}",
+        "sync": "Sync now",
+        "title": "BitBoxSync"
+      }
     }
   },
   "note": {
@@ -2005,6 +2026,9 @@
       "title": "Services"
     },
     "success": "Please unplug and replug the BitBox for the changes to take effect.",
+    "sync": {
+      "title": "Sync"
+    },
     "title": "Settings"
   },
   "setup": "Setup device",

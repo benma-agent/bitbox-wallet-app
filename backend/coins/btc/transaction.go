@@ -229,7 +229,7 @@ func (account *Account) AddressByID(addressID addresses.AddressID) *addresses.Ac
 }
 
 // SendTx implements accounts.Interface.
-func (account *Account) SendTx(txNote string) (string, error) {
+func (account *Account) SendTx() (string, error) {
 	unlock := account.activeTxProposalLock.RLock()
 	txProposal := account.activeTxProposal
 	unlock()
@@ -248,10 +248,6 @@ func (account *Account) SendTx(txNote string) (string, error) {
 		return "", err
 	}
 
-	if err := account.SetTxNote(signedTx.TxHash().String(), txNote); err != nil {
-		// Not critical.
-		account.log.WithError(err).Error("Failed to save transaction note when sending a tx")
-	}
 	return signedTx.TxID(), nil
 }
 

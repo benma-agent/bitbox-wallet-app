@@ -1,0 +1,55 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-quarter);
+  justify-content: flex-end;
+}
+
+.keystores {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-quarter);
+  min-width: min(100%, 420px);
+  width: 100%;
+}
+
+.keystoreRow {
+  align-items: center;
+  display: grid;
+  gap: var(--space-half);
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  justify-items: end;
+}
+
+.keystore.keystore {
+  font-size: var(--size-small);
+}
+
+.keystore small {
+  font-size: var(--size-xsmall);
+}
+
+.state {
+  color: var(--color-secondary);
+  font-size: var(--size-small);
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .actions {
+    justify-content: flex-start;
+  }
+
+  .keystores {
+    min-width: 100%;
+  }
+
+  .keystoreRow {
+    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+}

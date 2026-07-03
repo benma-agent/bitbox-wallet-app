@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/BitBoxSwiss/bitboxsync-client-go/raw"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc/types"
 	coinpkg "github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/coin"
@@ -217,6 +218,11 @@ func (keystore *Keystore) Features() *keystorePkg.Features {
 	return &keystorePkg.Features{
 		SupportsSendToSelf: true,
 	}
+}
+
+// BitBoxSyncIdentify implements keystore.Keystore.
+func (keystore *Keystore) BitBoxSyncIdentify() (raw.Identity, error) {
+	return raw.NewDummyKeystore("bitbox-wallet-app-software:" + keystore.master.String())
 }
 
 func (keystore *Keystore) signBTCTransaction(btcProposedTx *btc.ProposedTransaction) error {

@@ -5,6 +5,7 @@ package keystore
 import (
 	"errors"
 
+	"github.com/BitBoxSwiss/bitboxsync-client-go/raw"
 	btctypes "github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/btc/types"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/coins/coin"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/signing"
@@ -153,6 +154,9 @@ type Keystore interface {
 
 	// Features reports optional capabilities supported by this keystore.
 	Features() *Features
+
+	// BitBoxSyncIdentify returns the BitBoxSync identity for metadata sync.
+	BitBoxSyncIdentify() (raw.Identity, error)
 }
 
 // Features enumerates optional capabilities that can differ per keystore implementation.

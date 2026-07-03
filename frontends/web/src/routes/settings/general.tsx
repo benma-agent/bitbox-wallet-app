@@ -9,6 +9,7 @@ import { NotesExport } from './components/appearance/notesExport';
 import { DefaultCurrencyDropdownSetting } from './components/appearance/defaultCurrencyDropdownSetting';
 import { LanguageDropdownSetting } from './components/appearance/languageDropdownSetting';
 import { ActiveCurrenciesDropdownSetting } from './components/appearance/activeCurrenciesDropdownSetting';
+import { BitBoxSyncSetting } from './components/advanced-settings/bitboxsync-setting';
 import { WithSettingsTabs } from './components/tabs';
 import { MobileHeader } from './components/mobile-header';
 import { Guide } from '@/components/guide/guide';
@@ -19,12 +20,18 @@ import { TPagePropsWithSettingsTabs } from './types';
 import { GlobalBanners } from '@/components/banners';
 import { ContentWrapper } from '@/components/contentwrapper/contentwrapper';
 import { isNotesSettingsVisible } from './settings-availability';
+import type { TAccount } from '@/api/account';
 
 type TProps = {
+  accounts: TAccount[];
   hasAccounts: boolean;
 };
 
-export const General = ({ devices, hasAccounts }: TPagePropsWithSettingsTabs) => {
+type TGeneralProps = TPagePropsWithSettingsTabs & {
+  accounts: TAccount[];
+};
+
+export const General = ({ accounts, devices, hasAccounts }: TGeneralProps) => {
   const { t } = useTranslation();
   return (
     <GuideWrapper>
@@ -44,7 +51,7 @@ export const General = ({ devices, hasAccounts }: TPagePropsWithSettingsTabs) =>
           <View fullscreen={false}>
             <ViewContent>
               <WithSettingsTabs hasAccounts={hasAccounts} hideMobileMenu devices={devices}>
-                <GeneralSettingsContent hasAccounts={hasAccounts} />
+                <GeneralSettingsContent accounts={accounts} hasAccounts={hasAccounts} />
               </WithSettingsTabs>
             </ViewContent>
           </View>
@@ -57,6 +64,7 @@ export const General = ({ devices, hasAccounts }: TPagePropsWithSettingsTabs) =>
 };
 
 export const GeneralSettingsContent = ({
+  accounts,
   hasAccounts,
 }: TProps) => {
   const { t } = useTranslation();
@@ -71,6 +79,13 @@ export const GeneralSettingsContent = ({
         { id: 'dark-mode', content: <DarkmodeToggleSetting /> },
       ],
       title: <SubTitle>{t('settings.appearance')}</SubTitle>,
+    },
+    {
+      id: 'sync',
+      items: [
+        { id: 'bitboxsync', content: <BitBoxSyncSetting accounts={accounts} /> },
+      ],
+      title: <SubTitle className="m-top-default">{t('settings.sync.title')}</SubTitle>,
     },
     ...(isNotesSettingsVisible(hasAccounts) ? [{
       id: 'notes',
