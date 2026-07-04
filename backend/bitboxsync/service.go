@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	syncclient "github.com/BitBoxSwiss/bitboxsync-client-go/bitboxsync"
 	"github.com/BitBoxSwiss/bitboxsync-client-go/raw"
 	sqlitestore "github.com/BitBoxSwiss/bitboxsync-client-go/storage/sqlite"
 
@@ -138,6 +139,9 @@ func (s *Service) Login(ctx context.Context, identity raw.Identity, rootFingerpr
 		// already completed, so reconnect the existing engine instead of
 		// opening another one with duplicate background goroutines.
 		if err := runner.login(ctx); err != nil {
+			if errors.Is(err, syncclient.ErrRollback) {
+				return s.repairRollbackAndSyncLocked(ctx, rootFingerprintHex, runner, rootFingerprint, promptMayAsk)
+			}
 			return runner.statusSnapshot(), err
 		}
 		return runner.statusSnapshot(), nil
@@ -221,11 +225,23 @@ func (s *Service) Status() Status {
 
 // SyncNow performs a foreground sync pass.
 func (s *Service) SyncNow(ctx context.Context, rootFingerprint []byte) error {
-	_, runner, err := s.snapshotRunner(rootFingerprint)
+	rootFingerprintHex, unlock, err := s.lockLifecycle(rootFingerprint)
 	if err != nil {
 		return err
 	}
-	return runner.syncNow(ctx)
+	defer unlock()
+	runner, err := s.snapshotRunnerByRootFingerprint(rootFingerprintHex)
+	if err != nil {
+		return err
+	}
+	if err := runner.syncNow(ctx); err != nil {
+		if errors.Is(err, syncclient.ErrRollback) {
+			_, err := s.repairRollbackAndSyncLocked(ctx, rootFingerprintHex, runner, rootFingerprint, promptNever)
+			return err
+		}
+		return err
+	}
+	return nil
 }
 
 // ScheduleSync asks the background sync engine to reconcile soon.
@@ -277,11 +293,19 @@ func (s *Service) ensureRunnerLocked(
 	runner := s.ensureRunnerRecord(rootFingerprintHex)
 	err := runner.open(ctx, identity, rootFingerprint, s.storePath())
 	if err != nil {
+		if errors.Is(err, syncclient.ErrRollback) {
+			status, _, err := s.repairRollbackLocked(ctx, rootFingerprintHex, runner, rootFingerprint, policy)
+			if isNeedsDevice(err) && policy == promptNever {
+				return status, nil
+			}
+			return status, err
+		}
 		runner.recordError(err)
 		if isNeedsDevice(err) && policy == promptNever {
 			// Startup is intentionally non-interactive. Auth/login requirements are
 			// surfaced through auth status, so a needed device prompt is not a
 			// startup failure.
+			runner.recordAuthLoginRequired(time.Time{})
 			return runner.statusSnapshot(), nil
 		}
 		return runner.statusSnapshot(), err
@@ -297,8 +321,113 @@ func (s *Service) ensureRunnerLocked(
 			"rootFingerprint": rootFingerprintHex,
 		}).Info("BitBoxSync enabled")
 	}
-	runner.startBackground()
+	runner.startBackground(s.repairBackgroundRollback)
 	return status, nil
+}
+
+// repairBackgroundRollback resets local sync metadata after a background rollback.
+func (s *Service) repairBackgroundRollback(runner *runner) {
+	rootFingerprintHex := runner.rootFingerprint
+	rootFingerprint, err := hex.DecodeString(rootFingerprintHex)
+	if err != nil {
+		runner.recordError(err)
+		return
+	}
+	lockedRootFingerprintHex, unlock, err := s.lockLifecycle(rootFingerprint)
+	if err != nil {
+		runner.recordError(err)
+		return
+	}
+	defer unlock()
+	if lockedRootFingerprintHex != rootFingerprintHex {
+		runner.recordError(errp.New("BitBoxSync rollback repair root fingerprint mismatch"))
+		return
+	}
+	s.mu.Lock()
+	current := s.runners[rootFingerprintHex]
+	s.mu.Unlock()
+	if current != runner {
+		return
+	}
+	if _, _, err := s.repairRollbackLocked(context.Background(), rootFingerprintHex, runner, rootFingerprint, promptNever); err != nil {
+		if !isNeedsDevice(err) {
+			runner.recordError(err)
+		}
+		return
+	}
+}
+
+// repairRollbackAndSyncLocked repairs rollback state and retries one foreground sync.
+func (s *Service) repairRollbackAndSyncLocked(
+	ctx context.Context,
+	rootFingerprintHex string,
+	oldRunner *runner,
+	rootFingerprint []byte,
+	policy promptPolicy,
+) (KeystoreStatus, error) {
+	status, runner, err := s.repairRollbackLocked(ctx, rootFingerprintHex, oldRunner, rootFingerprint, policy)
+	if err != nil {
+		return status, err
+	}
+	if err := runner.syncNow(applyPromptPolicy(ctx, policy)); err != nil {
+		return runner.statusSnapshot(), err
+	}
+	return runner.statusSnapshot(), nil
+}
+
+// repairRollbackLocked resets local sync metadata and reopens one runner.
+func (s *Service) repairRollbackLocked(
+	ctx context.Context,
+	rootFingerprintHex string,
+	oldRunner *runner,
+	rootFingerprint []byte,
+	policy promptPolicy,
+) (KeystoreStatus, *runner, error) {
+	identity, keyID, ok := oldRunner.reopenStateSnapshot()
+	if !ok {
+		return oldRunner.statusSnapshot(), nil, errp.New("BitBoxSync rollback repair is missing runner state")
+	}
+	s.mu.Lock()
+	current := s.runners[rootFingerprintHex]
+	s.mu.Unlock()
+	if current != oldRunner {
+		return KeystoreStatus{}, nil, errDisabled
+	}
+
+	if s.Config.Log != nil {
+		s.Config.Log.WithFields(logrus.Fields{
+			"keyID":           keyID,
+			"rootFingerprint": rootFingerprintHex,
+		}).Warn("BitBoxSync rollback detected; resetting local sync metadata")
+	}
+	if err := oldRunner.close(); err != nil {
+		return oldRunner.statusSnapshot(), nil, err
+	}
+	if err := s.resetSyncState(keyID); err != nil {
+		oldRunner.recordError(err)
+		return oldRunner.statusSnapshot(), nil, err
+	}
+
+	runner := newRunner(s.Config, rootFingerprintHex)
+	s.mu.Lock()
+	if s.runners[rootFingerprintHex] != oldRunner {
+		s.mu.Unlock()
+		return KeystoreStatus{}, nil, errDisabled
+	}
+	s.runners[rootFingerprintHex] = runner
+	s.mu.Unlock()
+
+	ctx = applyPromptPolicy(ctx, policy)
+	if err := runner.open(ctx, identity, rootFingerprint, s.storePath()); err != nil {
+		runner.recordError(err)
+		if isNeedsDevice(err) {
+			runner.recordAuthLoginRequired(time.Time{})
+		}
+		return runner.statusSnapshot(), nil, err
+	}
+	status := runner.statusSnapshot()
+	runner.startBackground(s.repairBackgroundRollback)
+	return status, runner, nil
 }
 
 // ensureRunnerRecord returns the per-keystore runner record, creating it if needed.
@@ -333,16 +462,6 @@ func (s *Service) lockLifecycle(rootFingerprint []byte) (string, func(), error) 
 	s.mu.Unlock()
 	lock.Lock()
 	return rootFingerprintHex, lock.Unlock, nil
-}
-
-// snapshotRunner returns the currently active runner for a root fingerprint.
-func (s *Service) snapshotRunner(rootFingerprint []byte) (string, *runner, error) {
-	rootFingerprintHex, err := requireRootFingerprint(rootFingerprint)
-	if err != nil {
-		return "", nil, err
-	}
-	runner, err := s.snapshotRunnerByRootFingerprint(rootFingerprintHex)
-	return rootFingerprintHex, runner, err
 }
 
 // snapshotRunnerByRootFingerprint returns the active runner for an encoded root fingerprint.
@@ -389,6 +508,22 @@ func (s *Service) forgetIdentitySecrets(keyID string) error {
 	}
 	defer store.Close()
 	return store.ForgetIdentitySecrets(context.Background(), keyID)
+}
+
+// resetSyncState removes local namespace and item metadata for keyID after rollback.
+func (s *Service) resetSyncState(keyID string) error {
+	if keyID == "" {
+		return nil
+	}
+	if err := os.MkdirAll(s.Config.DataDir, 0700); err != nil {
+		return errp.WithStack(err)
+	}
+	store, err := sqlitestore.Open(s.storePath())
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	return store.ResetSyncState(context.Background(), keyID)
 }
 
 // requireRootFingerprint validates and encodes a keystore root fingerprint.

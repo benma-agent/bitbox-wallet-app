@@ -2,6 +2,8 @@ module github.com/BitBoxSwiss/bitbox-wallet-app
 
 go 1.26.0
 
+replace github.com/BitBoxSwiss/bitboxsync-client-go => ../bitboxsync-client-go
+
 require (
 	github.com/BitBoxSwiss/bitbox02-api-go v0.0.0-20260701210453-54ce69d38ae3
 	github.com/BitBoxSwiss/bitboxsync-client-go v0.0.0-20260703200449-f4bd9d5d91c2

@@ -4,6 +4,7 @@ package bitboxsync
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	syncclient "github.com/BitBoxSwiss/bitboxsync-client-go/bitboxsync"
@@ -13,7 +14,7 @@ import (
 )
 
 // runEventLoop consumes engine events until the runner is stopped.
-func (r *runner) runEventLoop(ctx context.Context) {
+func (r *runner) runEventLoop(ctx context.Context, rollbackHandler func(*runner)) {
 	engine, err := r.engineSnapshot()
 	if err != nil {
 		return
@@ -26,7 +27,7 @@ func (r *runner) runEventLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
-			r.handleSyncEvent(ctx, event)
+			r.handleSyncEvent(ctx, event, rollbackHandler)
 		}
 	}
 }
@@ -43,7 +44,7 @@ func (r *runner) handlePendingEvents(ctx context.Context) {
 			if !ok {
 				return
 			}
-			r.handleSyncEvent(ctx, event)
+			r.handleSyncEvent(ctx, event, nil)
 		default:
 			return
 		}
@@ -51,7 +52,7 @@ func (r *runner) handlePendingEvents(ctx context.Context) {
 }
 
 // handleSyncEvent applies one BitBoxSync engine event to runner status and collection hooks.
-func (r *runner) handleSyncEvent(ctx context.Context, event syncclient.Event) {
+func (r *runner) handleSyncEvent(ctx context.Context, event syncclient.Event, rollbackHandler func(*runner)) {
 	collections := r.collectionsSnapshot()
 	switch event.Type {
 	case syncclient.EventAuthLoginRequired:
@@ -64,6 +65,13 @@ func (r *runner) handleSyncEvent(ctx context.Context, event syncclient.Event) {
 		r.recordSuccess()
 		collections.flushTerminalNotifications()
 	case syncclient.EventSyncFailed:
+		if errors.Is(event.Err, syncclient.ErrRollback) && rollbackHandler != nil {
+			// A rollback failure can still happen after applying some remote
+			// writes. Flush pending reloads before the old runner is replaced.
+			collections.flushTerminalNotifications()
+			rollbackHandler(r)
+			return
+		}
 		r.recordError(event.Err)
 		// A sync pass can fail after applying some remote note writes. Those
 		// writes still need to become visible in the frontend, so flush the

@@ -24,6 +24,8 @@ type runner struct {
 	config Config
 	// rootFingerprint identifies the keystore whose metadata this runner syncs.
 	rootFingerprint string
+	// identity is the BitBoxSync identity used to reopen this runner after local state repair.
+	identity raw.Identity
 	// keyID identifies the BitBoxSync auth identity persisted in the sync store.
 	keyID string
 	// namespaceID identifies the default namespace used for wallet metadata.
@@ -87,6 +89,7 @@ func (r *runner) open(
 	}
 
 	r.mu.Lock()
+	r.identity = identity
 	r.keyID = keyID
 	r.storePath = storePath
 	r.engine = engine
@@ -114,12 +117,12 @@ func (r *runner) open(
 }
 
 // startBackground launches the runner's event loop and sync engine loop.
-func (r *runner) startBackground() {
+func (r *runner) startBackground(rollbackHandler func(*runner)) {
 	runCtx, cancel := context.WithCancel(context.Background())
 	r.mu.Lock()
 	r.cancel = cancel
 	r.mu.Unlock()
-	go r.runEventLoop(runCtx)
+	go r.runEventLoop(runCtx, rollbackHandler)
 	go r.runEngine(runCtx)
 }
 
@@ -207,6 +210,16 @@ func (r *runner) keyIDSnapshot() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.keyID
+}
+
+// reopenStateSnapshot returns the identity state needed to reopen this runner.
+func (r *runner) reopenStateSnapshot() (raw.Identity, string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.identity == nil || r.keyID == "" {
+		return nil, "", false
+	}
+	return r.identity, r.keyID, true
 }
 
 // runEngine drives the sync engine until the runner is closed.

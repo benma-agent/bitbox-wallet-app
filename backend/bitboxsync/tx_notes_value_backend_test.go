@@ -559,7 +559,7 @@ func TestServiceSyncEventsFlushTxNoteNotifications(t *testing.T) {
 	require.NoError(t, backend.Set(ctx, key, txNotesBucketForTest(map[string]string{"aa-remote": "remote note"})))
 	require.Empty(t, notified)
 
-	runner.handleSyncEvent(ctx, syncclient.Event{Type: syncclient.EventSyncFinished})
+	runner.handleSyncEvent(ctx, syncclient.Event{Type: syncclient.EventSyncFinished}, nil)
 	require.Equal(t, []accountsTypes.Code{"v0-test-btc-0"}, notified)
 }
 

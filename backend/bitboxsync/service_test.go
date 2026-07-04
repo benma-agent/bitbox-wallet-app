@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/accounts"
+	accountsTypes "github.com/BitBoxSwiss/bitbox-wallet-app/backend/accounts/types"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/keystore"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/util/errp"
 	syncclient "github.com/BitBoxSwiss/bitboxsync-client-go/bitboxsync"
@@ -90,7 +93,7 @@ func TestHandleSyncEventUpdatesAuthStatus(t *testing.T) {
 	syncRunner.handleSyncEvent(context.Background(), syncclient.Event{
 		Type:           syncclient.EventAuthRefreshRecommended,
 		TokenExpiresAt: expiresAt,
-	})
+	}, nil)
 	status := service.Status().Keystores["01020304"].AuthStatus
 	require.False(t, status.LoginRequired)
 	require.True(t, status.RefreshRecommended)
@@ -100,7 +103,7 @@ func TestHandleSyncEventUpdatesAuthStatus(t *testing.T) {
 	syncRunner.handleSyncEvent(context.Background(), syncclient.Event{
 		Type:           syncclient.EventAuthLoginRequired,
 		TokenExpiresAt: expiresAt,
-	})
+	}, nil)
 	status = service.Status().Keystores["01020304"].AuthStatus
 	require.True(t, status.LoginRequired)
 	require.False(t, status.RefreshRecommended)
@@ -110,7 +113,7 @@ func TestHandleSyncEventUpdatesAuthStatus(t *testing.T) {
 	syncRunner.handleSyncEvent(context.Background(), syncclient.Event{
 		Type:           syncclient.EventAuthSessionReady,
 		TokenExpiresAt: newExpiresAt,
-	})
+	}, nil)
 	status = service.Status().Keystores["01020304"].AuthStatus
 	require.False(t, status.LoginRequired)
 	require.False(t, status.RefreshRecommended)
@@ -225,6 +228,212 @@ func TestRecordErrorSuppressesNeedsDeviceStatusError(t *testing.T) {
 
 	status := service.Status().Keystores["01020304"]
 	require.Empty(t, status.LastError)
+}
+
+func TestSyncNowRepairsRollbackAndRetries(t *testing.T) {
+	ctx := context.Background()
+	fixture := newRollbackRepairFixture(t, ctx)
+	fixture.openStaleRunner(t, ctx)
+
+	// The first foreground sync sees that the server no longer reports the
+	// cached default namespace and therefore gets ErrRollback from the client
+	// engine. Service.SyncNow must treat that as a self-healing condition: close
+	// the stale runner, clear only local namespace/item sync metadata, reopen
+	// with the preserved bearer token, and retry the requested foreground sync
+	// once. The caller should observe a successful SyncNow, not a rollback error
+	// and not a half-repaired disabled runner.
+	require.NoError(t, fixture.service.SyncNow(ctx, fixture.rootFingerprint))
+	fixture.requireRepaired(t, ctx)
+}
+
+func TestBackgroundRunRepairsRollbackAndResumes(t *testing.T) {
+	ctx := context.Background()
+	fixture := newRollbackRepairFixture(t, ctx)
+	staleRunner := fixture.openStaleRunner(t, ctx)
+
+	// Engine.Run does not return normal sync-pass failures to the service. It
+	// emits EventSyncFailed and continues running. This test covers that
+	// background path explicitly: the old runner's initial Run sync observes the
+	// server rollback, the event loop invokes service rollback repair, and the
+	// replacement runner's background Run performs a successful sync without a
+	// foreground SyncNow call.
+	staleRunner.startBackground(fixture.service.repairBackgroundRollback)
+
+	require.Eventually(t, func() bool {
+		status := fixture.service.Status().Keystores[fixture.rootFingerprintHex]
+		return status.Running &&
+			status.LastSync != nil &&
+			status.LastError == "" &&
+			status.DefaultNamespaceID != "" &&
+			status.DefaultNamespaceID != fixture.oldNamespaceID
+	}, time.Second, 10*time.Millisecond)
+	fixture.requireRepaired(t, ctx)
+}
+
+type rollbackRepairFixture struct {
+	service            *Service
+	identity           raw.Identity
+	keyID              string
+	rootFingerprint    []byte
+	rootFingerprintHex string
+	oldNamespaceID     string
+	oldItemID          string
+
+	serverMu           sync.Mutex
+	repairedNamespace  string
+	listNamespaceCalls int
+}
+
+func newRollbackRepairFixture(t *testing.T, ctx context.Context) *rollbackRepairFixture {
+	t.Helper()
+
+	identity, err := raw.NewDummyKeystore("identity")
+	require.NoError(t, err)
+	publicIdentity, err := PublicIdentityFromRaw(identity)
+	require.NoError(t, err)
+	keyID, err := publicIdentity.KeyID()
+	require.NoError(t, err)
+
+	fixture := &rollbackRepairFixture{
+		identity:           identity,
+		keyID:              keyID,
+		rootFingerprint:    []byte{1, 2, 3, 4},
+		rootFingerprintHex: "01020304",
+		oldNamespaceID:     strings.Repeat("ab", protocol.NamespaceIDLength*2),
+		oldItemID:          strings.Repeat("cd", protocol.ItemIDLength*2),
+	}
+	server := httptest.NewServer(http.HandlerFunc(fixture.handleSyncServerRequest(t)))
+	t.Cleanup(server.Close)
+
+	fixture.service = New(Config{
+		BaseURL: server.URL,
+		DataDir: t.TempDir(),
+		Accounts: func() []accounts.Interface {
+			return nil
+		},
+		SetAccountName: func(accountsTypes.Code, string, time.Time) error {
+			return nil
+		},
+		SetAccountNameIfCurrent: func(accountsTypes.Code, string, time.Time, bool, string, time.Time) (bool, error) {
+			return true, nil
+		},
+	})
+	t.Cleanup(func() { _ = fixture.service.Close() })
+
+	store, err := sqlitestore.Open(fixture.service.storePath())
+	require.NoError(t, err)
+	require.NoError(t, store.SaveIdentity(ctx, syncclient.IdentityState{
+		KeyID:              keyID,
+		Kind:               protocol.IdentityKindKeystore,
+		AccessToken:        "access-token",
+		TokenExpiry:        time.Now().Add(time.Hour).UTC(),
+		DefaultNamespaceID: fixture.oldNamespaceID,
+	}))
+	require.NoError(t, store.SaveNamespace(ctx, syncclient.NamespaceState{
+		KeyID:         keyID,
+		NamespaceID:   fixture.oldNamespaceID,
+		Kind:          protocol.NamespaceKindDefault,
+		NamespaceHead: 7,
+		DEK:           []byte("old namespace dek"),
+	}))
+	require.NoError(t, store.SaveItem(ctx, syncclient.ItemState{
+		KeyID:       keyID,
+		NamespaceID: fixture.oldNamespaceID,
+		Collection:  "collection",
+		Key:         "key",
+		ItemID:      fixture.oldItemID,
+		Version:     3,
+		BaseVersion: 3,
+		BaseValue:   []byte("base-value"),
+	}))
+	require.NoError(t, store.Close())
+
+	return fixture
+}
+
+func (fixture *rollbackRepairFixture) handleSyncServerRequest(t *testing.T) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		fixture.serverMu.Lock()
+		defer fixture.serverMu.Unlock()
+
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/namespaces/default":
+			var req protocol.EnsureDefaultNamespaceRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			fixture.repairedNamespace = req.ProposedNamespaceID
+			writeTestJSON(t, w, protocol.EnsureDefaultNamespaceResponse{
+				NamespaceID: fixture.repairedNamespace,
+				Kind:        protocol.NamespaceKindDefault,
+				WrappedDEK:  req.WrappedDEK,
+				Created:     true,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/namespaces/mine":
+			fixture.listNamespaceCalls++
+			if fixture.listNamespaceCalls == 1 {
+				writeTestJSON(t, w, protocol.ListNamespacesResponse{})
+				return
+			}
+			require.NotEmpty(t, fixture.repairedNamespace)
+			writeTestJSON(t, w, protocol.ListNamespacesResponse{
+				Namespaces: []protocol.NamespaceSummary{{
+					NamespaceID:   fixture.repairedNamespace,
+					Kind:          protocol.NamespaceKindDefault,
+					NamespaceHead: 0,
+				}},
+			})
+		case r.Method == http.MethodGet &&
+			strings.HasPrefix(r.URL.Path, "/v1/namespaces/") &&
+			strings.HasSuffix(r.URL.Path, "/items"):
+			require.Contains(t, r.URL.Path, fixture.repairedNamespace)
+			writeTestJSON(t, w, protocol.GetNamespaceItemsResponse{
+				NamespaceID:   fixture.repairedNamespace,
+				NamespaceHead: 0,
+				Items:         map[string]protocol.NamespaceItemVersion{},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/namespaces/watch":
+			writeTestJSON(t, w, protocol.WatchNamespacesResponse{TimedOut: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}
+}
+
+func (fixture *rollbackRepairFixture) openStaleRunner(t *testing.T, ctx context.Context) *runner {
+	t.Helper()
+	staleRunner := newRunner(fixture.service.Config, fixture.rootFingerprintHex)
+	require.NoError(t, staleRunner.open(ctx, fixture.identity, fixture.rootFingerprint, fixture.service.storePath()))
+	fixture.service.mu.Lock()
+	fixture.service.runners[fixture.rootFingerprintHex] = staleRunner
+	fixture.service.mu.Unlock()
+	return staleRunner
+}
+
+func (fixture *rollbackRepairFixture) requireRepaired(t *testing.T, ctx context.Context) {
+	t.Helper()
+	status := fixture.service.Status().Keystores[fixture.rootFingerprintHex]
+	require.True(t, status.Running)
+	require.Empty(t, status.LastError)
+	require.NotNil(t, status.LastSync)
+	require.NotEqual(t, fixture.oldNamespaceID, status.DefaultNamespaceID)
+	require.NotEmpty(t, status.DefaultNamespaceID)
+	require.NoError(t, fixture.service.Close())
+
+	store, err := sqlitestore.Open(fixture.service.storePath())
+	require.NoError(t, err)
+	defer store.Close()
+	identityState, err := store.LoadIdentity(ctx, fixture.keyID)
+	require.NoError(t, err)
+	require.Equal(t, "access-token", identityState.AccessToken)
+	require.Equal(t, status.DefaultNamespaceID, identityState.DefaultNamespaceID)
+	_, err = store.GetNamespace(ctx, fixture.keyID, fixture.oldNamespaceID)
+	require.ErrorIs(t, err, syncclient.ErrNotFound)
+	_, err = store.GetItemByID(ctx, fixture.keyID, fixture.oldNamespaceID, fixture.oldItemID)
+	require.ErrorIs(t, err, syncclient.ErrNotFound)
+
+	fixture.serverMu.Lock()
+	defer fixture.serverMu.Unlock()
+	require.GreaterOrEqual(t, fixture.listNamespaceCalls, 2)
 }
 
 func testRunnerWithStatus(rootFingerprint string, status KeystoreStatus) *runner {
@@ -352,4 +561,10 @@ func TestDisableDerivesKeyIDFromCachedPublicIdentity(t *testing.T) {
 	namespace, err := store.GetNamespace(ctx, keyID, namespaceID)
 	require.NoError(t, err)
 	require.Empty(t, namespace.DEK)
+}
+
+func writeTestJSON(t *testing.T, w http.ResponseWriter, value interface{}) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	require.NoError(t, json.NewEncoder(w).Encode(value))
 }

@@ -10,7 +10,7 @@ github.com/BitBoxSwiss/bitbox02-api-go/communication/u2fhid/hiddevice
 github.com/BitBoxSwiss/bitbox02-api-go/util/errp
 github.com/BitBoxSwiss/bitbox02-api-go/util/semver
 github.com/BitBoxSwiss/bitbox02-api-go/util/sleep
-# github.com/BitBoxSwiss/bitboxsync-client-go v0.0.0-20260703200449-f4bd9d5d91c2
+# github.com/BitBoxSwiss/bitboxsync-client-go v0.0.0-20260703200449-f4bd9d5d91c2 => ../bitboxsync-client-go
 ## explicit; go 1.26
 github.com/BitBoxSwiss/bitboxsync-client-go/bitboxsync
 github.com/BitBoxSwiss/bitboxsync-client-go/protocol
@@ -381,3 +381,4 @@ google.golang.org/protobuf/types/known/emptypb
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
+# github.com/BitBoxSwiss/bitboxsync-client-go => ../bitboxsync-client-go
