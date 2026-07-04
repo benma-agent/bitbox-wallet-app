@@ -698,6 +698,7 @@ func (backend *Backend) SetAccountActive(accountCode accountsTypes.Code, active 
 		return err
 	}
 	backend.ReinitializeAccounts()
+	backend.BitBoxSyncSchedule()
 	return nil
 }
 
@@ -718,6 +719,7 @@ func (backend *Backend) SetTokenActive(accountCode accountsTypes.Code, tokenCode
 		return err
 	}
 	backend.ReinitializeAccounts()
+	backend.BitBoxSyncSchedule()
 	return nil
 }
 
@@ -1651,12 +1653,14 @@ func (backend *Backend) checkAccountUsed(account accounts.Interface) {
 	}
 	log.Info("marking account as used")
 	var emitUpdate bool
+	var scheduleSync bool
 	err := backend.config.ModifyAccountsConfig(func(accountsConfig *config.AccountsConfig) error {
 		acct := accountsConfig.Lookup(account.Config().Config.Code)
 		if acct == nil {
 			return errp.Newf("could not find account")
 		}
 		emitUpdate = !acct.Used || acct.HiddenBecauseUnused
+		scheduleSync = acct.HiddenBecauseUnused
 		acct.Used = true
 		acct.HiddenBecauseUnused = false
 
@@ -1668,6 +1672,9 @@ func (backend *Backend) checkAccountUsed(account accounts.Interface) {
 	}
 	if emitUpdate {
 		backend.emitAccountsStatusChanged()
+	}
+	if scheduleSync {
+		backend.BitBoxSyncSchedule()
 	}
 	backend.maybeAddHiddenUnusedAccounts()
 }
