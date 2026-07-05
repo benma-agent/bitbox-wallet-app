@@ -2,11 +2,9 @@ module github.com/BitBoxSwiss/bitbox-wallet-app
 
 go 1.26.0
 
-replace github.com/BitBoxSwiss/bitboxsync-client-go => ../bitboxsync-client-go
-
 require (
 	github.com/BitBoxSwiss/bitbox02-api-go v0.0.0-20260701210453-54ce69d38ae3
-	github.com/BitBoxSwiss/bitboxsync-client-go v0.0.0-20260703200449-f4bd9d5d91c2
+	github.com/BitBoxSwiss/bitboxsync-client-go v0.0.0-20260705070138-0d745bfb2481
 	github.com/BitBoxSwiss/block-client-go v0.0.0-20250813114605-c276f6470c3d
 	github.com/btcsuite/btcd v0.25.0
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5
