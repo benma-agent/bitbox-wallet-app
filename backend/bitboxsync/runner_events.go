@@ -125,28 +125,28 @@ func logTxNoteSyncEvent(ctx context.Context, log *logrus.Entry, event syncclient
 	}
 }
 
-// logAccountConfigSyncEvent logs account-config item uploads and downloads.
-func logAccountConfigSyncEvent(ctx context.Context, log *logrus.Entry, event syncclient.Event, valueBackend *accountConfigValueBackend) {
-	if event.Collection != accountConfigCollection || log == nil || valueBackend == nil {
+// logAccountNameSyncEvent logs account-name item uploads and downloads.
+func logAccountNameSyncEvent(ctx context.Context, log *logrus.Entry, event syncclient.Event, valueBackend *accountNameValueBackend) {
+	if event.Collection != accountNameCollection || log == nil || valueBackend == nil {
 		return
 	}
-	accountCode, err := decodeAccountConfigKey(event.Key)
+	accountCode, err := decodeAccountNameKey(event.Key)
 	if err != nil {
-		log.WithError(err).WithField("key", event.Key).Warn("could not decode BitBoxSync account config key")
+		log.WithError(err).WithField("key", event.Key).Warn("could not decode BitBoxSync account name key")
 		return
 	}
 	value, err := valueBackend.Get(ctx, event.Key)
 	if err != nil {
-		log.WithError(err).WithField("key", event.Key).Warn("could not load BitBoxSync account config for sync log")
+		log.WithError(err).WithField("key", event.Key).Warn("could not load BitBoxSync account name for sync log")
 		return
 	}
 	switch event.Type {
 	case syncclient.EventItemDownloaded:
-		log.WithFields(accountConfigLogFields(event, accountCode, value)).
-			Info("BitBoxSync account config downloaded")
+		log.WithFields(accountNameLogFields(event, accountCode, value)).
+			Info("BitBoxSync account name downloaded")
 	case syncclient.EventItemUploaded:
-		log.WithFields(accountConfigLogFields(event, accountCode, value)).
-			Info("BitBoxSync account config uploaded")
+		log.WithFields(accountNameLogFields(event, accountCode, value)).
+			Info("BitBoxSync account name uploaded")
 	}
 }
 
@@ -165,15 +165,15 @@ func txNotesItemLogFields(event syncclient.Event) (logrus.Fields, error) {
 	}, nil
 }
 
-// accountConfigItemLogFields builds conflict log fields for an account-config item.
-func accountConfigItemLogFields(event syncclient.Event) (logrus.Fields, error) {
-	accountCode, err := decodeAccountConfigKey(event.Key)
+// accountNameItemLogFields builds conflict log fields for an account-name item.
+func accountNameItemLogFields(event syncclient.Event) (logrus.Fields, error) {
+	accountCode, err := decodeAccountNameKey(event.Key)
 	if err != nil {
 		return nil, err
 	}
 	return logrus.Fields{
 		"accountCode": accountCode,
-		"kind":        "config",
+		"kind":        "name",
 		"namespaceID": event.NamespaceID,
 		"itemID":      event.ItemID,
 	}, nil
@@ -194,17 +194,17 @@ func txNoteLogFields(event syncclient.Event, accountCode accountsTypes.Code, buc
 	}
 }
 
-// accountConfigLogFields builds upload/download log fields for one account config value.
-func accountConfigLogFields(event syncclient.Event, accountCode accountsTypes.Code, value accountConfigValue) logrus.Fields {
+// accountNameLogFields builds upload/download log fields for one account name value.
+func accountNameLogFields(event syncclient.Event, accountCode accountsTypes.Code, value accountNameValue) logrus.Fields {
 	fields := logrus.Fields{
 		"accountCode": accountCode,
 		"namespaceID": event.NamespaceID,
 		"itemID":      event.ItemID,
 	}
-	if value.Name != nil {
-		fields["name"] = value.Name.Value
-		fields["nameBytes"] = len(value.Name.Value)
-		fields["nameModifiedAt"] = value.Name.ModifiedAt
+	if value.Name != "" {
+		fields["name"] = value.Name
+		fields["nameBytes"] = len(value.Name)
+		fields["modifiedAt"] = value.ModifiedAt
 	}
 	return fields
 }

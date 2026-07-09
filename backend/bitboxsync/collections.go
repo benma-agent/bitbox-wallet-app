@@ -15,8 +15,8 @@ import (
 type runnerCollections struct {
 	// txNotes adapts account transaction notes to a BitBoxSync collection.
 	txNotes *txNotesValueBackend
-	// accountConfig adapts account configuration fields to a BitBoxSync collection.
-	accountConfig *accountConfigValueBackend
+	// accountName adapts account names to a BitBoxSync collection.
+	accountName *accountNameValueBackend
 }
 
 // registerRunnerCollections registers all wallet metadata collections for a namespace.
@@ -29,13 +29,13 @@ func registerRunnerCollections(
 	if err != nil {
 		return nil, err
 	}
-	accountConfig, err := registerAccountConfigCollection(namespace, config, rootFingerprint)
+	accountName, err := registerAccountNameCollection(namespace, config, rootFingerprint)
 	if err != nil {
 		return nil, err
 	}
 	return &runnerCollections{
-		txNotes:       txNotes,
-		accountConfig: accountConfig,
+		txNotes:     txNotes,
+		accountName: accountName,
 	}, nil
 }
 
@@ -53,7 +53,7 @@ func registerTxNotesCollection(
 		return nil, err
 	}
 	_, err = syncclient.OpenCollection(namespace, txNotesCollection, syncclient.CollectionConfig[txNotesBucket]{
-		Codec:   syncclient.JSONCodec[txNotesBucket](),
+		Codec:   txNotesBucketCodec(),
 		Merge:   mergeTxNotesBucket,
 		Backend: valueBackend,
 	})
@@ -63,16 +63,16 @@ func registerTxNotesCollection(
 	return valueBackend, nil
 }
 
-// registerAccountConfigCollection registers account-config sync for a namespace.
-func registerAccountConfigCollection(
+// registerAccountNameCollection registers account-name sync for a namespace.
+func registerAccountNameCollection(
 	namespace *syncclient.Namespace,
 	config Config,
 	rootFingerprint []byte,
-) (*accountConfigValueBackend, error) {
+) (*accountNameValueBackend, error) {
 	if config.Accounts == nil {
-		return nil, errp.New("account config accounts provider is required")
+		return nil, errp.New("account name accounts provider is required")
 	}
-	valueBackend, err := newAccountConfigValueBackend(
+	valueBackend, err := newAccountNameValueBackend(
 		config.Accounts,
 		rootFingerprint,
 		config.SetAccountName,
@@ -81,8 +81,8 @@ func registerAccountConfigCollection(
 	if err != nil {
 		return nil, err
 	}
-	_, err = syncclient.OpenCollection(namespace, accountConfigCollection, syncclient.CollectionConfig[accountConfigValue]{
-		Codec:   syncclient.JSONCodec[accountConfigValue](),
+	_, err = syncclient.OpenCollection(namespace, accountNameCollection, syncclient.CollectionConfig[accountNameValue]{
+		Codec:   accountNameValueCodec(),
 		Merge:   valueBackend.merge,
 		Backend: valueBackend,
 	})
@@ -110,7 +110,7 @@ func (c *runnerCollections) logItemEvent(ctx context.Context, log *logrus.Entry,
 		return
 	}
 	logTxNoteSyncEvent(ctx, log, event, c.txNotes)
-	logAccountConfigSyncEvent(ctx, log, event, c.accountConfig)
+	logAccountNameSyncEvent(ctx, log, event, c.accountName)
 }
 
 // logConflictEvent logs collection-specific conflict diagnostics.
@@ -126,12 +126,12 @@ func (c *runnerCollections) logConflictEvent(log *logrus.Entry, event syncclient
 			return
 		}
 		log.WithFields(fields).Warn("BitBoxSync transaction note conflict")
-	case accountConfigCollection:
-		fields, err := accountConfigItemLogFields(event)
+	case accountNameCollection:
+		fields, err := accountNameItemLogFields(event)
 		if err != nil {
-			log.WithError(err).WithField("key", event.Key).Warn("could not decode BitBoxSync account config key")
+			log.WithError(err).WithField("key", event.Key).Warn("could not decode BitBoxSync account name key")
 			return
 		}
-		log.WithFields(fields).Warn("BitBoxSync account config conflict")
+		log.WithFields(fields).Warn("BitBoxSync account name conflict")
 	}
 }

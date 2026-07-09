@@ -75,9 +75,9 @@ type Config struct {
 	// Accounts returns the currently loaded wallet accounts for collection backends.
 	Accounts func() []accounts.Interface
 	// SetAccountName writes a synced account name without a compare-and-swap guard.
-	SetAccountName AccountConfigNameSetter
+	SetAccountName AccountNameSetter
 	// SetAccountNameIfCurrent writes a synced account name only if the local value matches.
-	SetAccountNameIfCurrent AccountConfigNameConditionalSetter
+	SetAccountNameIfCurrent AccountNameConditionalSetter
 	// NotifyTxNotesChanged tells the app to reload transaction-note views for an account.
 	NotifyTxNotesChanged func(accountsTypes.Code)
 	// NotifyAuthStatusChanged tells the app that auth banner state changed for a keystore.

@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	txNotesCollection  = "tx-notes-v1"
+	txNotesCollection  = "tx-notes-v2"
 	txNotesBucketCount = 256
 
 	txNotesKeySegmentSeparator = "/"
@@ -32,26 +32,31 @@ const (
 
 // Transaction note sync schema:
 //
-// Collection: tx-notes-v1
+// Collection: tx-notes-v2
 //
 // Each currently active single-sig account owned by the enabled keystore
 // exposes 256 fixed bucket items:
 //
 //	key:   <url-path-escaped-account-code>/135
-//	value: {"<internalTxID>":{"note":"<note>","modifiedAt":"2026-05-11T10:24:00Z"}}
+//	value: fixed binary txNotesBucket
 //
 // A transaction note belongs to the bucket identified by the first byte of
 // SHA-256(internalTxID). Empty note strings are tombstones with their own
 // modifiedAt timestamp and are kept in the normal wallet notes store so
 // deletions can sync and win over older non-empty notes.
+//
+// With the current 64KiB item limit, 256 buckets can hold on the order of
+// 100k+ normal short notes per account before a bucket is likely to overflow.
+// If that ever becomes a practical limit, prefer increasing the server item
+// size before adding a new collection with more buckets.
 type txNotesBucket map[string]txNoteEntry
 
 // txNoteEntry stores one synced transaction note and the edit timestamp used for conflict resolution.
 type txNoteEntry struct {
 	// Note is the user-entered note text, or an empty tombstone for deletion.
-	Note string `json:"note"`
+	Note string
 	// ModifiedAt is the timestamp used to order conflicting edits.
-	ModifiedAt time.Time `json:"modifiedAt"`
+	ModifiedAt time.Time
 }
 
 func encodeTxNotesBucketKey(accountCode accountsTypes.Code, bucket int) (string, error) {
@@ -359,6 +364,9 @@ func storeAccountTxNotesBucket(account accounts.Interface, bucket int, value txN
 
 func validateTxNotesBucket(bucket int, value txNotesBucket) error {
 	for txID, entry := range value {
+		if txID == "" {
+			return errp.New("transaction note tx id cannot be empty")
+		}
 		if txNoteBucketIndex(txID) != bucket {
 			return errp.New("transaction note does not belong to bucket")
 		}

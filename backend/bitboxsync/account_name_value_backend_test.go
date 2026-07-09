@@ -19,9 +19,9 @@ import (
 func accountNameSetters(
 	accountsProvider func() []accounts.Interface,
 	rootFingerprint []byte,
-) (AccountConfigNameSetter, AccountConfigNameConditionalSetter) {
+) (AccountNameSetter, AccountNameConditionalSetter) {
 	set := func(accountCode accountsTypes.Code, name string, modifiedAt time.Time) error {
-		account := accountByCode(accountConfigSyncAccounts(accountsProvider(), rootFingerprint), accountCode)
+		account := accountByCode(accountNameSyncAccounts(accountsProvider(), rootFingerprint), accountCode)
 		if account == nil {
 			return errp.New("account not found")
 		}
@@ -41,7 +41,7 @@ func accountNameSetters(
 		name string,
 		modifiedAt time.Time,
 	) (bool, error) {
-		account := accountByCode(accountConfigSyncAccounts(accountsProvider(), rootFingerprint), accountCode)
+		account := accountByCode(accountNameSyncAccounts(accountsProvider(), rootFingerprint), accountCode)
 		if account == nil {
 			return false, errp.New("account not found")
 		}
@@ -61,32 +61,30 @@ func accountNameSetters(
 	return set, setIfCurrent
 }
 
-func accountConfigValueWithName(name string, modifiedAt time.Time) accountConfigValue {
-	return accountConfigValue{
-		Name: &modifiedString{
-			Value:      name,
-			ModifiedAt: modifiedAt,
-		},
+func accountNameValueWithName(name string, modifiedAt time.Time) accountNameValue {
+	return accountNameValue{
+		ModifiedAt: modifiedAt,
+		Name:       name,
 	}
 }
 
-func TestAccountConfigKeyEncoding(t *testing.T) {
-	key, err := encodeAccountConfigKey("v0-test-btc-0")
+func TestAccountNameKeyEncoding(t *testing.T) {
+	key, err := encodeAccountNameKey("v0-test-btc-0")
 	require.NoError(t, err)
 	require.Equal(t, "v0-test-btc-0", key)
-	accountCode, err := decodeAccountConfigKey(key)
+	accountCode, err := decodeAccountNameKey(key)
 	require.NoError(t, err)
 	require.Equal(t, accountsTypes.Code("v0-test-btc-0"), accountCode)
 
-	escapedKey, err := encodeAccountConfigKey("acct/with space%")
+	escapedKey, err := encodeAccountNameKey("acct/with space%")
 	require.NoError(t, err)
 	require.Equal(t, "acct%2Fwith%20space%25", escapedKey)
-	accountCode, err = decodeAccountConfigKey(escapedKey)
+	accountCode, err = decodeAccountNameKey(escapedKey)
 	require.NoError(t, err)
 	require.Equal(t, accountsTypes.Code("acct/with space%"), accountCode)
 }
 
-func TestDecodeAccountConfigKeyRejectsInvalidKeys(t *testing.T) {
+func TestDecodeAccountNameKeyRejectsInvalidKeys(t *testing.T) {
 	for _, key := range []string{
 		"wallet/v0-test-btc-0/config",
 		"",
@@ -98,12 +96,12 @@ func TestDecodeAccountConfigKeyRejectsInvalidKeys(t *testing.T) {
 		"account//config",
 		"account/%zz/config",
 	} {
-		_, err := decodeAccountConfigKey(key)
+		_, err := decodeAccountNameKey(key)
 		require.Error(t, err, key)
 	}
 }
 
-func TestAccountConfigValueBackendKeysGetSetAndSnapshot(t *testing.T) {
+func TestAccountNameValueBackendKeysGetSetAndSnapshot(t *testing.T) {
 	ctx := context.Background()
 	activeAccount, _ := mockAccountWithConfig(t, config.Account{
 		Code:     "v0-test-btc-0",
@@ -181,24 +179,24 @@ func TestAccountConfigValueBackendKeysGetSetAndSnapshot(t *testing.T) {
 		return accountList
 	}
 	set, setIfCurrent := accountNameSetters(accountsProvider, testRootFingerprint)
-	backend, err := newAccountConfigValueBackend(accountsProvider, testRootFingerprint, set, setIfCurrent)
+	backend, err := newAccountNameValueBackend(accountsProvider, testRootFingerprint, set, setIfCurrent)
 	require.NoError(t, err)
 
-	activeKey, err := encodeAccountConfigKey("v0-test-btc-0")
+	activeKey, err := encodeAccountNameKey("v0-test-btc-0")
 	require.NoError(t, err)
-	inactiveKey, err := encodeAccountConfigKey("v0-test-btc-1")
+	inactiveKey, err := encodeAccountNameKey("v0-test-btc-1")
 	require.NoError(t, err)
-	hiddenKey, err := encodeAccountConfigKey("v0-test-btc-2")
+	hiddenKey, err := encodeAccountNameKey("v0-test-btc-2")
 	require.NoError(t, err)
-	tokenKey, err := encodeAccountConfigKey("v0-test-eth-0-eth-erc20-usdt")
+	tokenKey, err := encodeAccountNameKey("v0-test-eth-0-eth-erc20-usdt")
 	require.NoError(t, err)
-	wrongRootKey, err := encodeAccountConfigKey("v0-test-btc-3")
+	wrongRootKey, err := encodeAccountNameKey("v0-test-btc-3")
 	require.NoError(t, err)
-	emptyConfigKey, err := encodeAccountConfigKey("v0-test-btc-4")
+	emptyConfigKey, err := encodeAccountNameKey("v0-test-btc-4")
 	require.NoError(t, err)
-	mixedRootKey, err := encodeAccountConfigKey("v0-test-btc-5")
+	mixedRootKey, err := encodeAccountNameKey("v0-test-btc-5")
 	require.NoError(t, err)
-	unknownConfigKey, err := encodeAccountConfigKey("v0-test-btc-6")
+	unknownConfigKey, err := encodeAccountNameKey("v0-test-btc-6")
 	require.NoError(t, err)
 
 	keys, err := backend.Keys(ctx)
@@ -213,22 +211,22 @@ func TestAccountConfigValueBackendKeysGetSetAndSnapshot(t *testing.T) {
 
 	value, err := backend.Get(ctx, activeKey)
 	require.NoError(t, err)
-	require.Equal(t, accountConfigValueWithName("Bitcoin", time.Time{}), value)
+	require.Equal(t, accountNameValueWithName("Bitcoin", time.Time{}), value)
 
 	snapshot, err := backend.Snapshot(ctx)
 	require.NoError(t, err)
-	require.Equal(t, accountConfigValueWithName("Bitcoin", time.Time{}), snapshot[activeKey])
-	require.Equal(t, accountConfigValueWithName("Savings", time.Time{}), snapshot[inactiveKey])
+	require.Equal(t, accountNameValueWithName("Bitcoin", time.Time{}), snapshot[activeKey])
+	require.Equal(t, accountNameValueWithName("Savings", time.Time{}), snapshot[inactiveKey])
 
 	remoteModifiedAt := txNoteTestModifiedAt.Add(time.Hour)
-	require.NoError(t, backend.Set(ctx, activeKey, accountConfigValueWithName("Remote Bitcoin", remoteModifiedAt)))
+	require.NoError(t, backend.Set(ctx, activeKey, accountNameValueWithName("Remote Bitcoin", remoteModifiedAt)))
 	require.Equal(t, "Remote Bitcoin", activeAccount.Config().Config.Name)
 	require.NotNil(t, activeAccount.Config().Config.NameModifiedAt)
 	require.True(t, remoteModifiedAt.Equal(*activeAccount.Config().Config.NameModifiedAt))
-	require.Error(t, backend.Set(ctx, wrongRootKey, accountConfigValueWithName("Wrong Remote", remoteModifiedAt)))
+	require.Error(t, backend.Set(ctx, wrongRootKey, accountNameValueWithName("Wrong Remote", remoteModifiedAt)))
 }
 
-func TestAccountConfigValueBackendSetIfCurrentRejectsRacedWrite(t *testing.T) {
+func TestAccountNameValueBackendSetIfCurrentRejectsRacedWrite(t *testing.T) {
 	ctx := context.Background()
 	baseModifiedAt := txNoteTestModifiedAt
 	account, _ := mockAccountWithConfig(t, config.Account{
@@ -242,16 +240,16 @@ func TestAccountConfigValueBackendSetIfCurrentRejectsRacedWrite(t *testing.T) {
 		return accountList
 	}
 	set, setIfCurrent := accountNameSetters(accountsProvider, testRootFingerprint)
-	backend, err := newAccountConfigValueBackend(accountsProvider, testRootFingerprint, set, setIfCurrent)
+	backend, err := newAccountNameValueBackend(accountsProvider, testRootFingerprint, set, setIfCurrent)
 	require.NoError(t, err)
-	key, err := encodeAccountConfigKey("v0-test-btc-0")
+	key, err := encodeAccountNameKey("v0-test-btc-0")
 	require.NoError(t, err)
 
 	remoteModifiedAt := baseModifiedAt.Add(time.Hour)
 	replaced, err := backend.SetIfCurrent(ctx, key,
-		accountConfigValueWithName("Base", baseModifiedAt),
+		accountNameValueWithName("Base", baseModifiedAt),
 		true,
-		accountConfigValueWithName("Remote", remoteModifiedAt),
+		accountNameValueWithName("Remote", remoteModifiedAt),
 	)
 	require.NoError(t, err)
 	require.True(t, replaced)
@@ -262,16 +260,16 @@ func TestAccountConfigValueBackendSetIfCurrentRejectsRacedWrite(t *testing.T) {
 	account.Config().Config.Name = "Local"
 	account.Config().Config.NameModifiedAt = &localModifiedAt
 	replaced, err = backend.SetIfCurrent(ctx, key,
-		accountConfigValueWithName("Remote", remoteModifiedAt),
+		accountNameValueWithName("Remote", remoteModifiedAt),
 		true,
-		accountConfigValueWithName("Stale Remote", remoteModifiedAt.Add(2*time.Hour)),
+		accountNameValueWithName("Stale Remote", remoteModifiedAt.Add(2*time.Hour)),
 	)
 	require.NoError(t, err)
 	require.False(t, replaced)
 	require.Equal(t, "Local", account.Config().Config.Name)
 }
 
-func TestAccountConfigValueBackendSetIfCurrentCreatesMissingValue(t *testing.T) {
+func TestAccountNameValueBackendSetIfCurrentCreatesMissingValue(t *testing.T) {
 	ctx := context.Background()
 	account, _ := mockAccountWithConfig(t, config.Account{
 		Code:     "v0-test-btc-0",
@@ -282,16 +280,16 @@ func TestAccountConfigValueBackendSetIfCurrentCreatesMissingValue(t *testing.T) 
 		return accountList
 	}
 	set, setIfCurrent := accountNameSetters(accountsProvider, testRootFingerprint)
-	backend, err := newAccountConfigValueBackend(accountsProvider, testRootFingerprint, set, setIfCurrent)
+	backend, err := newAccountNameValueBackend(accountsProvider, testRootFingerprint, set, setIfCurrent)
 	require.NoError(t, err)
-	key, err := encodeAccountConfigKey("v0-test-btc-0")
+	key, err := encodeAccountNameKey("v0-test-btc-0")
 	require.NoError(t, err)
 
 	modifiedAt := txNoteTestModifiedAt
 	replaced, err := backend.SetIfCurrent(ctx, key,
-		accountConfigValue{},
+		accountNameValue{},
 		false,
-		accountConfigValueWithName("Remote", modifiedAt),
+		accountNameValueWithName("Remote", modifiedAt),
 	)
 	require.NoError(t, err)
 	require.True(t, replaced)
@@ -299,62 +297,62 @@ func TestAccountConfigValueBackendSetIfCurrentCreatesMissingValue(t *testing.T) 
 	require.True(t, modifiedAt.Equal(*account.Config().Config.NameModifiedAt))
 }
 
-func TestMergeAccountConfig(t *testing.T) {
+func TestMergeAccountName(t *testing.T) {
 	baseTime := txNoteTestModifiedAt
 	localTime := baseTime.Add(time.Hour)
 	remoteTime := baseTime.Add(2 * time.Hour)
-	base := accountConfigValueWithName("Base", baseTime)
-	merged, resolved, err := mergeAccountConfig(
+	base := accountNameValueWithName("Base", baseTime)
+	merged, resolved, err := mergeAccountNameValue(
 		"Bitcoin",
 		&base,
-		accountConfigValueWithName("Base", baseTime),
-		accountConfigValueWithName("Remote", remoteTime),
+		accountNameValueWithName("Base", baseTime),
+		accountNameValueWithName("Remote", remoteTime),
 	)
 	require.NoError(t, err)
 	require.True(t, resolved)
-	require.Equal(t, accountConfigValueWithName("Remote", remoteTime), merged)
+	require.Equal(t, accountNameValueWithName("Remote", remoteTime), merged)
 
-	merged, resolved, err = mergeAccountConfig(
+	merged, resolved, err = mergeAccountNameValue(
 		"Bitcoin",
 		&base,
-		accountConfigValueWithName("Local", localTime),
-		accountConfigValueWithName("Remote", remoteTime),
+		accountNameValueWithName("Local", localTime),
+		accountNameValueWithName("Remote", remoteTime),
 	)
 	require.NoError(t, err)
 	require.True(t, resolved)
-	require.Equal(t, accountConfigValueWithName("Remote", remoteTime), merged)
+	require.Equal(t, accountNameValueWithName("Remote", remoteTime), merged)
 
-	merged, resolved, err = mergeAccountConfig(
+	merged, resolved, err = mergeAccountNameValue(
 		"Bitcoin",
 		&base,
-		accountConfigValueWithName("Bitcoin", remoteTime),
-		accountConfigValueWithName("Custom", localTime),
+		accountNameValueWithName("Bitcoin", remoteTime),
+		accountNameValueWithName("Custom", localTime),
 	)
 	require.NoError(t, err)
 	require.True(t, resolved)
-	require.Equal(t, accountConfigValueWithName("Custom", localTime), merged)
+	require.Equal(t, accountNameValueWithName("Custom", localTime), merged)
 }
 
-func TestMergeAccountConfigWithoutBase(t *testing.T) {
+func TestMergeAccountNameWithoutBase(t *testing.T) {
 	localTime := txNoteTestModifiedAt
 	remoteTime := localTime.Add(time.Hour)
-	merged, resolved, err := mergeAccountConfig(
+	merged, resolved, err := mergeAccountNameValue(
 		"Bitcoin",
 		nil,
-		accountConfigValueWithName("Local", localTime),
-		accountConfigValueWithName("Remote", remoteTime),
+		accountNameValueWithName("Local", localTime),
+		accountNameValueWithName("Remote", remoteTime),
 	)
 	require.NoError(t, err)
 	require.True(t, resolved)
-	require.Equal(t, accountConfigValueWithName("Remote", remoteTime), merged)
+	require.Equal(t, accountNameValueWithName("Remote", remoteTime), merged)
 
-	merged, resolved, err = mergeAccountConfig(
+	merged, resolved, err = mergeAccountNameValue(
 		"Bitcoin",
 		nil,
-		accountConfigValueWithName("Bitcoin", remoteTime),
-		accountConfigValueWithName("Custom", localTime),
+		accountNameValueWithName("Bitcoin", remoteTime),
+		accountNameValueWithName("Custom", localTime),
 	)
 	require.NoError(t, err)
 	require.True(t, resolved)
-	require.Equal(t, accountConfigValueWithName("Custom", localTime), merged)
+	require.Equal(t, accountNameValueWithName("Custom", localTime), merged)
 }
