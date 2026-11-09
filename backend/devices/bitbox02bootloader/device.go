@@ -44,6 +44,7 @@ func NewDevice(
 	version *semver.SemVer,
 	product bitbox02common.Product,
 	communication bootloader.Communication,
+	options ...bootloader.DeviceOption,
 ) *Device {
 	log := logging.Get().
 		WithGroup("device").
@@ -67,6 +68,7 @@ func NewDevice(
 				Object:  device.Status(),
 			})
 		},
+		options...,
 	)
 
 	firmwareHash, signingKeysHash, err := device.Device.GetHashes(false, false)
@@ -81,8 +83,11 @@ func NewDevice(
 // Init implements device.Device.
 func (device *Device) Init(testing bool) error {
 	// Automatically continue upgrading if the previous upgrade was an intermediate upgrade.
+	if device.IsDevelopment() {
+		return device.initDevelopment()
+	}
 
-	currentFirmwareVersion, _, err := device.Device.Versions()
+	versions, err := device.Device.Versions()
 	if err != nil {
 		return err
 	}
@@ -95,8 +100,8 @@ func (device *Device) Init(testing bool) error {
 	// Loop all but the last firmware.
 	for i := 0; i < len(firmwares)-1; i++ {
 		fwInfo := firmwares[i]
-		if fwInfo.continuesUpgrade(currentFirmwareVersion, device.bootloaderVersion) {
-			device.log.Infof("continuing upgrade on %d", currentFirmwareVersion)
+		if fwInfo.continuesUpgrade(versions.FirmwareVersion, device.bootloaderVersion) {
+			device.log.Infof("continuing upgrade on %d", versions.FirmwareVersion)
 			go func() {
 				if err := device.UpgradeFirmware(); err != nil {
 					device.log.WithError(err).Error("upgrade continuation failed")
@@ -134,8 +139,9 @@ func (device *Device) SetOnEvent(onEvent func(event.Event, interface{})) {
 // Status contains the bootloader status plus app-level context about the current operation.
 type Status struct {
 	*bootloader.Status
-	Product bitbox02common.Product `json:"product"`
-	Erased  bool                   `json:"erased"`
+	Product     bitbox02common.Product `json:"product"`
+	Erased      bool                   `json:"erased"`
+	Development bool                   `json:"development"`
 	// AdditionalUpgradeFollows is true if there is more than one upgrade to be performed
 	// (intermediate and final).
 	AdditionalUpgradeFollows bool `json:"additionalUpgradeFollows"`
@@ -151,6 +157,7 @@ func (device *Device) Status() *Status {
 		Status:                   device.Device.Status(),
 		Product:                  device.Device.Product(),
 		Erased:                   erased,
+		Development:              device.IsDevelopment(),
 		AdditionalUpgradeFollows: additionalUpgradeFollows,
 	}
 }
@@ -159,7 +166,7 @@ func (device *Device) Status() *Status {
 // being able to upgrade. This is currently the case for intermediate firmware upgrades, which means
 // all bundled firmwares except the latest.
 func (device *Device) firmwareBootRequired() (bool, error) {
-	currentFirmwareVersion, _, err := device.Device.Versions()
+	versions, err := device.Device.Versions()
 	if err != nil {
 		return false, err
 	}
@@ -171,7 +178,7 @@ func (device *Device) firmwareBootRequired() (bool, error) {
 	// Loop all but the last firmware.
 	for i := 0; i < len(firmwares)-1; i++ {
 		fwInfo := firmwares[i]
-		if fwInfo.bootRequired(currentFirmwareVersion, device.bootloaderVersion) {
+		if fwInfo.bootRequired(versions.FirmwareVersion, device.bootloaderVersion) {
 			return true, nil
 		}
 	}
@@ -181,17 +188,20 @@ func (device *Device) firmwareBootRequired() (bool, error) {
 // nextFirmware returns the info of the next available firmware uprade, e.g. the next intermediate
 // upgrade if there is one, or the latest bundled firmware.
 func (device *Device) nextFirmware() (*firmwareInfo, error) {
-	currentFirmwareVersion, _, err := device.Device.Versions()
+	versions, err := device.Device.Versions()
 	if err != nil {
 		return nil, err
 	}
-	return nextFirmware(device.Device.Product(), currentFirmwareVersion)
+	return nextFirmware(device.Device.Product(), versions.FirmwareVersion)
 }
 
 // UpgradeFirmware uploads the next available firmware release to the device. If the previous
 // upgrade was an intermdiate upgrade, booting/running it once is required beforehand, so the device
 // is booted in that case.
 func (device *Device) UpgradeFirmware() error {
+	if device.IsDevelopment() {
+		return device.upgradeDevelopment()
+	}
 	product := device.Device.Product()
 
 	firmwareBootRequired, err := device.firmwareBootRequired()
@@ -200,11 +210,11 @@ func (device *Device) UpgradeFirmware() error {
 	}
 
 	if firmwareBootRequired {
-		currentFirmwareVersion, _, err := device.Device.Versions()
+		versions, err := device.Device.Versions()
 		if err != nil {
 			device.log.WithError(err).Errorf("firmware boot required before upgrade. product: %s. Could not determine current version", product)
 		} else {
-			device.log.Infof("firmware boot required before upgrade. product: %s, currentVersion: %d", product, currentFirmwareVersion)
+			device.log.Infof("firmware boot required before upgrade. product: %s, currentVersion: %d", product, versions.FirmwareVersion)
 		}
 		return device.Reboot()
 	}
@@ -247,14 +257,18 @@ type Info struct {
 
 // Info returns info about the device and the firmware upgrade to the bundled firmware.
 func (device *Device) Info() (*Info, error) {
+	if device.IsDevelopment() {
+		return device.developmentInfo()
+	}
 	erased, err := device.Device.Erased()
 	if err != nil {
 		return nil, err
 	}
-	currentFirmwareVersion, _, err := device.Device.Versions()
+	versions, err := device.Device.Versions()
 	if err != nil {
 		return nil, err
 	}
+	currentFirmwareVersion := versions.FirmwareVersion
 	currentFirmwareHash, _, err := device.Device.GetHashes(false, false)
 	if err != nil {
 		return nil, err

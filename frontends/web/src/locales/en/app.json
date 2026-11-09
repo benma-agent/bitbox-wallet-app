@@ -218,6 +218,7 @@
       "label": "Advanced settings",
       "toggleShowFirmwareHash": "Show the firmware hash every time on startup"
     },
+    "development": "On this development device, choose \"Continue\" when prompted after an upgrade. Keep the BitBox connected until all upgrades finish.",
     "flipscreen": "Flip screen",
     "orientation": "Device oriented the wrong way?",
     "success": "Upgrade successful!",

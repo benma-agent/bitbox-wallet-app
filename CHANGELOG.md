@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Support upgrading development BitBox02 and BitBox02 Nova bootloaders to v1.2.4 before installing the latest firmware
 
 ## v4.53.0
 - Bundle BitBox02 and BitBox02 Nova firmware version v9.28.0 and intermediate version v9.27.2

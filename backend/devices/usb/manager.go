@@ -5,7 +5,6 @@ package usb
 import (
 	"io"
 	"os"
-	"regexp"
 	"time"
 
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/devices/bitbox"
@@ -14,6 +13,7 @@ import (
 	"github.com/BitBoxSwiss/bitbox-wallet-app/backend/devices/device"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/util/errp"
 	"github.com/BitBoxSwiss/bitbox-wallet-app/util/logging"
+	"github.com/BitBoxSwiss/bitbox02-api-go/api/bootloader"
 	bitbox02common "github.com/BitBoxSwiss/bitbox02-api-go/api/common"
 	"github.com/BitBoxSwiss/bitbox02-api-go/api/firmware"
 	"github.com/BitBoxSwiss/bitbox02-api-go/communication/u2fhid"
@@ -117,20 +117,6 @@ func deviceInfoLogFields(deviceInfo DeviceInfo) logrus.Fields {
 	}
 }
 
-func (manager *Manager) parseVersion(serial string) (*semver.SemVer, error) {
-	match := regexp.MustCompile(`v([0-9]+\.[0-9]+\.[0-9]+)`).FindStringSubmatch(serial)
-	if len(match) != 2 {
-		manager.log.WithField("serial", serial).Error("Serial number is malformed")
-		return nil, errp.Newf("Could not find the firmware version in '%s'.", serial)
-	}
-	version, err := semver.NewSemVerFromString(match[1])
-	if err != nil {
-		return nil, errp.WithContext(errp.WithMessage(err, "Failed to read version from serial number"),
-			errp.Context{"serial": serial})
-	}
-	return version, err
-}
-
 func (manager *Manager) makeBitBox(deviceInfo DeviceInfo) (*bitbox.Device, error) {
 	deviceID := deviceInfo.Identifier()
 	manager.log.
@@ -138,7 +124,7 @@ func (manager *Manager) makeBitBox(deviceInfo DeviceInfo) (*bitbox.Device, error
 		WithFields(deviceInfoLogFields(deviceInfo)).
 		Info("Registering BitBox")
 	bootloader := deviceInfo.Product() == "bootloader" || deviceInfo.Product() == "Digital Bitbox bootloader"
-	version, err := manager.parseVersion(deviceInfo.Serial())
+	version, _, err := semver.ParseDeviceVersion(deviceInfo.Serial())
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +164,7 @@ func (manager *Manager) makeBitBox02(deviceInfo DeviceInfo) (*bitbox02.Device, e
 		WithField("device-id", deviceID).
 		WithFields(deviceInfoLogFields(deviceInfo)).
 		Info("Registering BitBox02")
-	version, err := manager.parseVersion(deviceInfo.Serial())
+	version, _, err := semver.ParseDeviceVersion(deviceInfo.Serial())
 	if err != nil {
 		return nil, err
 	}
@@ -207,9 +193,12 @@ func (manager *Manager) makeBitBox02Bootloader(deviceInfo DeviceInfo) (
 		WithField("device-id", deviceID).
 		WithFields(deviceInfoLogFields(deviceInfo)).
 		Info("Registering BitBox02 bootloader")
-	version, err := manager.parseVersion(deviceInfo.Serial())
+	version, development, err := semver.ParseDeviceVersion(deviceInfo.Serial())
 	if err != nil {
 		return nil, err
+	}
+	if development && deviceInfo.IsBluetooth() {
+		return nil, errp.New("connect the development device over USB to upgrade its firmware")
 	}
 	product, err := bitbox02common.ProductFromDeviceProductString(deviceInfo.Product())
 	if err != nil {
@@ -224,6 +213,7 @@ func (manager *Manager) makeBitBox02Bootloader(deviceInfo DeviceInfo) (
 		version,
 		product,
 		u2fhid.NewCommunication(hidDevice, bitbox02BootloaderCMD),
+		bootloader.WithDevelopment(development),
 	), nil
 }
 

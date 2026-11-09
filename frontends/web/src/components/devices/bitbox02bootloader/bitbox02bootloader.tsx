@@ -165,6 +165,7 @@ export const BitBox02Bootloader = ({ deviceID }: TProps) => {
       <View fitContent verticallyCentered width="556px">
         <ViewContent>
           {logo}
+          {status.development && <p>{t('bb02Bootloader.development')}</p>}
           {status.errMsg && (
             <Message type="warning">
               {status.errMsg}

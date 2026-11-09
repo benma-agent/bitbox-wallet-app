@@ -76,10 +76,15 @@ type firmwareInfo struct {
 }
 
 func (fi firmwareInfo) signedBinary() ([]byte, error) {
-	gz, err := gzip.NewReader(bytes.NewBuffer(fi.binaryGzip))
+	return decompressFirmware(fi.binaryGzip)
+}
+
+func decompressFirmware(binaryGzip []byte) ([]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewBuffer(binaryGzip))
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = gz.Close() }()
 	return io.ReadAll(gz)
 }
 

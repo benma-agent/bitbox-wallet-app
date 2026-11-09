@@ -1,7 +1,7 @@
 # codeberg.org/go-pdf/fpdf v0.12.0
 ## explicit; go 1.25.0
 codeberg.org/go-pdf/fpdf
-# github.com/BitBoxSwiss/bitbox02-api-go v0.0.0-20261103140118-bdd3532428a5
+# github.com/BitBoxSwiss/bitbox02-api-go v0.0.0-20261103140118-bdd3532428a5 => github.com/benma-agent/bitbox02-api-go v0.0.0-20261109091117-07f4e6f92123
 ## explicit; go 1.26
 github.com/BitBoxSwiss/bitbox02-api-go/api/bootloader
 github.com/BitBoxSwiss/bitbox02-api-go/api/common
@@ -404,3 +404,4 @@ google.golang.org/protobuf/types/known/emptypb
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
+# github.com/BitBoxSwiss/bitbox02-api-go => github.com/benma-agent/bitbox02-api-go v0.0.0-20261109091117-07f4e6f92123

@@ -2,6 +2,9 @@ module github.com/BitBoxSwiss/bitbox-wallet-app
 
 go 1.26.10
 
+// Temporary until benma-agent/development-bootloader-upgrade is merged upstream.
+replace github.com/BitBoxSwiss/bitbox02-api-go => github.com/benma-agent/bitbox02-api-go v0.0.0-20261109091117-07f4e6f92123
+
 require (
 	codeberg.org/go-pdf/fpdf v0.12.0
 	github.com/BitBoxSwiss/bitbox02-api-go v0.0.0-20261103140118-bdd3532428a5
