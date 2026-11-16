@@ -130,6 +130,10 @@ func SignTransaction(
 		} else {
 			err = sendUntrackedTransaction(client, txProposal.Tx)
 		}
+		if errp.Cause(err) == ErrBroadcastUncertain {
+			// The transaction may still confirm, so the caller needs its hash.
+			return txProposal.Tx, errp.WithStack(err)
+		}
 		if err != nil {
 			return nil, errp.WithStack(err)
 		}
@@ -141,10 +145,22 @@ func SignTransaction(
 func sendUntrackedTransaction(client rpcclient.Interface, transaction *types.Transaction) error {
 	err := client.SendTransaction(context.TODO(), transaction)
 	rpcErr, _ := errp.Cause(err).(rpcclient.RPCError)
-	if rpcErr.Message == "already known" {
+	if err == nil || rpcErr.Message == "already known" {
 		return nil
 	}
-	if err == nil || rpcErr.Rejected() || errp.Cause(err) == rpcclient.ErrRequestRejected {
+	// The response can be lost or malformed after the node accepted the transaction.
+	if known, _, lookupErr := client.TransactionByHash(context.TODO(), transaction.Hash()); lookupErr == nil && known != nil {
+		return nil
+	}
+	rejected := rpcErr.Rejected()
+	if rpcErr.Code == -32000 {
+		// Rollup nodes also return this code when passing the transaction to the sequencer fails
+		// or times out. Only these messages prove a rejection.
+		rejected = slices.ContainsFunc(
+			[]string{"insufficient funds", "nonce too low", "underpriced", "intrinsic gas too low"},
+			func(message string) bool { return strings.Contains(rpcErr.Message, message) })
+	}
+	if rejected || errp.Cause(err) == rpcclient.ErrRequestRejected {
 		return err
 	}
 	return errp.WithMessage(ErrBroadcastUncertain, err.Error())

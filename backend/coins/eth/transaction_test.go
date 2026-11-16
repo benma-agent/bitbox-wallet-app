@@ -351,8 +351,14 @@ func TestSignTransactionUntrackedBroadcastResult(t *testing.T) {
 	for _, test := range []struct {
 		name          string
 		sendErr       error
+		foundByHash   bool
 		expectedCause error
 	}{
+		{
+			name:        "transaction found after a failed response",
+			sendErr:     errp.New("request timed out"),
+			foundByHash: true,
+		},
 		{
 			name:          "transport outcome is uncertain",
 			sendErr:       errp.New("request timed out"),
@@ -361,6 +367,11 @@ func TestSignTransactionUntrackedBroadcastResult(t *testing.T) {
 		{
 			name:          "provider timeout is uncertain",
 			sendErr:       rpcclient.RPCError{Code: -32002, Message: "request timed out"},
+			expectedCause: ErrBroadcastUncertain,
+		},
+		{
+			name:          "sequencer hand-over failure is uncertain",
+			sendErr:       rpcclient.RPCError{Code: -32000, Message: "context deadline exceeded"},
 			expectedCause: ErrBroadcastUncertain,
 		},
 		{
@@ -383,8 +394,13 @@ func TestSignTransactionUntrackedBroadcastResult(t *testing.T) {
 			acct := newAccountWithOptions(t, true, make(chan struct{}, 1))
 			defer acct.Close()
 			setTransactionSigningKeystore(t, acct, 10)
+			if test.foundByHash {
+				client.TransactionByHashFunc = func(context.Context, common.Hash) (*gethtypes.Transaction, bool, error) {
+					return gethtypes.NewTx(&gethtypes.LegacyTx{}), false, nil
+				}
+			}
 
-			_, err := SignTransaction(SignTransactionArgs{
+			tx, err := SignTransaction(SignTransactionArgs{
 				ChainID: 10, Broadcast: true, Transaction: validTransactionRequest(acct),
 			}, client, acct.signingConfiguration, acct.Config().ConnectKeystore, nil, acct.log)
 			if test.expectedCause == nil {
@@ -392,6 +408,7 @@ func TestSignTransactionUntrackedBroadcastResult(t *testing.T) {
 			} else {
 				require.Equal(t, test.expectedCause, errp.Cause(err))
 			}
+			require.Equal(t, err == nil || test.expectedCause == ErrBroadcastUncertain, tx != nil)
 			require.Len(t, client.SendTransactionCalls(), 1)
 		})
 	}
