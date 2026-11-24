@@ -81,34 +81,96 @@ xcrun altool --list-providers --username "APPLE_ID" --password "PASSWORD"
 
 ## Windows
 
-The build requires `Microsoft Visual Studio 2022 Community Edition`, with the `MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)`
-individual component.
+### Build the release archive
 
-It also requires `mingw-w64`, `bash` (e.g. `git-bash`), `make`,`go 1.26.10`, `node@26`, `QT 6.8.2` with `qtwebengine`, `nsis`
-and possibly other tools.
+On a Windows 10 or later x64 PC, open 64-bit Windows PowerShell in the repository root. Check the
+installed tools before the first build.
 
-Some of the tools are easy to install with `choco`:
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-archive.ps1 -CheckOnly
+```
 
-    choco install git
-    choco install mingw
-    choco install nsis
-    choco install make
+The check covers Git for Windows with Bash, Go, Node.js with its bundled npm,
+MinGW-w64 with GNU Make, the Qt MSVC kit and its modules, the MSVC x64 toolset and CRT, and the
+Windows SDK. It prints the selected paths, missing or conflicting installations, required versions
+and download links. Install or replace the reported components manually, then rerun the check.
+For missing or mismatched MinGW files, run the versioned Chocolatey command printed by the
+check in an administrator PowerShell window. Windows CI installs the same package version.
+Visual Studio 2022 Build Tools, Community and Enterprise can supply the required components.
+The build accepts different Git for Windows versions. It uses Git from the selected installation
+to check out the commit and submodules, Git Bash to run the Make recipes, and GNU tar and gzip
+when packaging. The pinned tool versions and file hashes are in
+[windows-toolchain.json](../scripts/windows-toolchain.json).
 
-Add a system environment variable `MINGW_BIN` pointing to the bin directory of mingw
-(e.g. `/c/MinGW/bin` or `/c/Program Files/Git/mingw64/bin`).
+The script checks standard install locations, registered Visual Studio and SDK locations, and tools
+visible on `PATH`. For a custom Qt or MinGW location, set `QT_ROOT_DIR` to the Qt kit directory
+or `MINGW_BIN` to the MinGW `bin` directory for the current PowerShell session. Multiple discovered
+installations of a tool on a local PC are reported together for manual resolution.
 
-Add to the system environment variable `PATH`:
-- Location of `qmake`, e.g. `C:\Qt\6.8.2\msvc2022_64\bin`
-- Location of nsis, e.g. `C:\Program Files (x86)\NSIS\Bin`
+Build the archive with one command. The dependency check runs again as part of the build.
 
-Build the QT frontend for Windows: `make qt-windows`
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-archive.ps1
+```
 
-Build artifacts:
-* `frontends\qt\build\windows\*`
-* `frontends\qt\build\BitBox-installer.exe`
+If you already use `make` in Git Bash, `make qt-windows-archive` calls the same entry point. The
+build itself uses GNU Make from the verified MinGW installation. The script checks out the current
+Git commit and its pinned submodules in a temporary directory using the line endings in Git.
+It uses the committed source, including `APP_VERSION`. Drive `B:` must be free. The script maps
+it temporarily to give both builders the same paths and uses directory junctions to the verified
+installations. Git Bash, GNU Make, the compilers, qmake and windeployqt run with a build-specific
+environment. The script checks the deployed EXEs and DLLs against the release file list. If Qt
+deploys additional libraries, the error names them so you can adjust the kit's optional modules.
+The build fetches the project's locked npm dependencies and verifies the vendored Go modules in
+temporary directories. The release archive uses the commit timestamp and normalized tar metadata.
 
-On Windows, run `make qt-windows-archive` from the repository root to build the release archive.
-Copy `frontends\qt\build\BitBox-<APP_VERSION>-win64-build.tar.gz` to the Linux signing machine.
+The command prints the archive SHA-256 and writes
+`frontends\qt\build\BitBox-<APP_VERSION>-win64-build.tar.gz`. From an extracted source ZIP,
+pass `-Commit <full-40-character-SHA>` and, for a fork, `-Repository owner/repo`
+to fetch that revision. Run the scripts from the revision being built. If Windows marks a downloaded
+ZIP as an Internet file, select **Unblock** in its Properties before extracting it.
+
+For an unsigned development installer built from the working tree, install NSIS, put its
+`makensis` and the development tools on Git Bash's `PATH`, and run `make qt-windows`. This writes
+`frontends\qt\BitBox-installer.exe` and deploys the app into `frontends\qt\build\windows\`.
+
+### Verify the Windows build
+
+For a two-PC check, use the same commit on both PCs. On the first PC, build into a new directory.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-archive.ps1 -OutputDirectory C:\builds\bitbox-reference
+```
+
+Copy that directory to the second PC, or share it over the network. On the second PC, rebuild and
+compare with the reference folder.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-archive.ps1 -Reference C:\builds\bitbox-reference
+```
+
+Passing `-Reference` enables verification. It accepts the flat release folder or an existing
+unsigned build `.tar.gz`.
+For a CI reference, authenticate GitHub CLI once with `gh auth login` and use `-Verify` alone.
+The script downloads the artifact from a successful `ci.yml` push run for the exact commit and
+reads its tar.gz contents once. Use `-Repository owner/repo` for a fork.
+
+Verification compares case-sensitive relative paths and the SHA-256 of every file under
+`windows/` plus `APP_VERSION`, `icon.ico`, `setup.nsi`, and `sign-windows-release.py`. It reports
+each missing, extra, or changed file and exits with an error on differences. File timestamps,
+tar metadata, and gzip encoding can differ. Verification alone finishes at the comparison.
+To produce the Linux signing archive in the same run, add `-CreateArchive` to either verification
+command. The script packages the verified local files after a successful comparison.
+
+To compare two folders you have already built, run the verifier directly from the repository root.
+
+```powershell
+go run -mod=vendor ./scripts/verify-windows-build C:\builds\bitbox-local C:\builds\bitbox-reference
+```
+
+### Sign and package on Linux
+
+Copy the trusted release archive to the Linux signing machine.
 
 On Debian or Ubuntu, install the packaging tools on the signing machine with apt.
 

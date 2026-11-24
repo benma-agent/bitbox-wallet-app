@@ -3,7 +3,9 @@
 
 function Get-PhysicalDirectory([string] $Path) {
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-    if ($item.Target) {
+    # Under a junction on a subst drive, Windows PowerShell 5.1 can report a Target
+    # for an ordinary directory using the subst drive letter and the physical path.
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $item.Target) {
         $target = @($item.Target)[0]
         if (![IO.Path]::IsPathRooted($target)) { $target = Join-Path $item.Parent.FullName $target }
         return Get-PhysicalDirectory $target
