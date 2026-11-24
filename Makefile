@@ -66,14 +66,14 @@ qt-osx: check-go-vendor # run on OSX.
 	$(MAKE) buildweb
 	cd frontends/qt && $(MAKE) osx
 	$(MAKE) osx-sec-check
-qt-windows: check-go-vendor
+qt-windows:
 	$(MAKE) buildweb
 	cd frontends/qt && $(MAKE) windows
 .PHONY: qt-windows-archive qt-windows-release-payload
 qt-windows-archive:
 	powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File scripts/windows-archive.ps1
 # The release entry point invokes this with the verified toolchain.
-qt-windows-release-payload: check-go-vendor
+qt-windows-release-payload:
 	$(MAKE) buildweb NPM_LICENSE_ARGS="-- --check"
 	cd frontends/qt && bash make_windows.sh payload
 android:

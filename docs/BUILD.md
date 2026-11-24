@@ -122,8 +122,8 @@ Qt and the Go server write their native outputs to a fresh temporary build direc
 Git Bash, GNU Make, the compilers, qmake and windeployqt run with a build-specific environment.
 The script checks the deployed EXEs and DLLs against the release file list. If Qt
 deploys additional libraries, the error names them so you can adjust the kit's optional modules.
-The build verifies the vendored Go modules in a temporary directory. The release archive uses the
-commit timestamp and normalized tar metadata.
+The Windows build compiles the Go server with the dependencies in `vendor/`. The release archive
+uses the commit timestamp and normalized tar metadata.
 
 The command prints the archive SHA-256 and writes
 `frontends\qt\build\BitBox-<APP_VERSION>-win64-build.tar.gz`. An explicit `-Commit` different

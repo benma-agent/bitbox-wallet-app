@@ -1,5 +1,4 @@
 # Git Bash reads these build scripts directly from the Windows working tree.
-/scripts/check-go-vendor.sh text eol=lf
 /scripts/windows-archive-build.sh text eol=lf
 /frontends/qt/*.sh text eol=lf
 
