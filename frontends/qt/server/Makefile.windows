@@ -8,7 +8,7 @@ GOOS=windows
 GOTOOLCHAIN=local
 BREEZ_LIB_DIR=../../../vendor/github.com/breez/breez-sdk-spark-go/breez_sdk_spark/lib/windows-amd64/
 SERVER_OUT ?= .
-SERVER_ARCHIVE_FLAGS := -trimpath -mod=vendor -ldflags="-s -w $(GO_VERSION_LDFLAGS)" \
+SERVER_ARCHIVE_FLAGS := -trimpath -mod=vendor -ldflags="-s -w $(GO_RELEASE_LDFLAGS)" \
 	-buildmode=c-archive
 
 windows:
@@ -16,7 +16,7 @@ windows:
 	CGO_LDFLAGS="${GOWINLDFLAGS} ${LFLAGS}" \
 	GOARCH=${GOARCH} CGO_ENABLED=${CGO} GOOS=${GOOS} GOTOOLCHAIN=${GOTOOLCHAIN} \
 	bash ../../../scripts/go-trimpath.sh go build -trimpath -x -mod=vendor \
-	-ldflags "$(GO_VERSION_LDFLAGS)" \
+	-ldflags "$(GO_RELEASE_LDFLAGS)" \
 	-buildmode="${BUILDMODE}" -o ${LIBNAME}.dll
 
 windows-cross:
@@ -26,7 +26,7 @@ windows-cross:
 	CGO_LDFLAGS="${GOWINLDFLAGS} ${LFLAGS}" \
 	GOARCH=${GOARCH} CGO_ENABLED=${CGO} GOOS=${GOOS} GOTOOLCHAIN=${GOTOOLCHAIN} \
 	bash ../../../scripts/go-trimpath.sh go build -trimpath -x -mod=vendor \
-	-ldflags "$(GO_VERSION_LDFLAGS)" \
+	-ldflags "$(GO_RELEASE_LDFLAGS)" \
 	-buildmode="${BUILDMODE}" -o ${LIBNAME}.dll
 
 windows-legacy:
