@@ -26,6 +26,37 @@ function Invoke-Native([string] $Program, [string[]] $Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$Program $($Arguments -join ' ') failed ($LASTEXITCODE)." }
 }
 
+function Initialize-BuildCheckout([string] $Git, [string] $Checkout, [bool] $VerifySource) {
+    if ($VerifySource) {
+        # Git can report a clean checkout even when it has converted LF to CRLF on disk.
+        $converted = @(Invoke-Native $Git @('-C', $Checkout, 'ls-files', '--eol') | Where-Object {
+            $_ -match '^i/(lf|crlf|mixed)\s+w/(lf|crlf|mixed)\s' -and $Matches[1] -ne $Matches[2]
+        })
+        if ($converted.Count) {
+            $first = ($converted[0] -split "\t", 2)[1]
+            Write-Warning "$Checkout has $($converted.Count) tracked files with different line endings on disk, including $first. Verification compares the built bytes."
+        }
+    }
+    if (!(Test-Path -LiteralPath "$Checkout\.gitmodules")) { return }
+    # Initialize missing submodules individually to preserve work in populated submodules.
+    $links = Invoke-Native $Git @('-C', $Checkout, '-c', 'core.quotepath=false', 'ls-files', '--stage') |
+        Where-Object { $_ -like '160000 *' }
+    foreach ($link in $links) {
+        $entry, $path = $link -split "\t", 2
+        if (!$entry.EndsWith(' 0')) { throw "Resolve the submodule conflict at $Checkout\$path." }
+        $module = Join-Path $Checkout $path
+        if (!(Test-Path -LiteralPath "$module\.git")) {
+            Invoke-Native $Git @('-C', $Checkout, '-c', 'core.autocrlf=false', 'submodule', 'update', '--init', '--checkout', '--', $path)
+        }
+        if ($VerifySource) {
+            $expected = Invoke-Native $Git @('-C', $Checkout, 'rev-parse', '--verify', "HEAD:$path")
+            $actual = Invoke-Native $Git @('-C', $module, 'rev-parse', '--verify', 'HEAD')
+            if ($actual -ne $expected) { throw "Submodule $module is at $actual. The commit being verified records $expected." }
+        }
+        Initialize-BuildCheckout $Git $module $VerifySource
+    }
+}
+
 function Test-QtPaths([string] $Qt) {
     $query = @{}
     foreach ($line in (Invoke-Native "$Qt\bin\qtpaths.exe" @('--query'))) {
@@ -175,7 +206,7 @@ try {
     foreach ($name in $junctionNames) {
         [void](New-Item -ItemType Junction -Path "B:\$name" -Target $tools[$name])
     }
-    foreach ($dir in @('src','temp','config')) { [void][IO.Directory]::CreateDirectory("B:\$dir") }
+    foreach ($dir in @('qt-build','temp','config')) { [void][IO.Directory]::CreateDirectory("B:\$dir") }
     $env:TEMP = $env:TMP = 'B:\temp'
     $env:GIT_CONFIG_NOSYSTEM = '1'
     $env:GIT_CONFIG_GLOBAL = 'B:/config/.gitconfig'
@@ -196,6 +227,7 @@ try {
     $env:QT_HASH_SEED = '0'
     $env:BITBOX_WINDOWS_MAKE = 'B:/mingw/bin/mingw32-make.exe'
     $env:BITBOX_QT_BIN = 'B:/qt/bin'
+    $env:BITBOX_QT_BUILD_DIR = 'B:/qt-build'
     $env:BITBOX_VS_ROOT = 'B:\vs'
     $env:BITBOX_VC_VERSION = $pins.msvc.directory
     $env:BITBOX_SDK_VERSION = $pins.sdk.directory
@@ -220,25 +252,35 @@ try {
 
     $git = 'B:\git\cmd\git.exe'
     $source = "https://github.com/$Repository.git"
+    $head = $null
     if (Test-Path -LiteralPath "$root\.git") {
         $source = $root
-        if (!$Commit) { $Commit = Invoke-Native $git @('-C', $root, 'rev-parse', '--verify', 'HEAD') }
+        $head = Invoke-Native $git @('-C', $root, 'rev-parse', '--verify', 'HEAD')
+        if (!$Commit) { $Commit = $head }
     } elseif (!$Commit) { throw 'Supply -Commit with the full Git SHA when running from a source ZIP.' }
-    Write-Host "Building commit $Commit"
-    Invoke-Native $git @('-C', 'B:\src', 'init', '--quiet')
-    Invoke-Native $git @('-C', 'B:\src', 'config', 'core.autocrlf', 'false')
-    Invoke-Native $git @('-C', 'B:\src', 'fetch', '--quiet', '--no-tags', '--depth=1', '--update-shallow', $source, $Commit)
-    Invoke-Native $git @('-C', 'B:\src', 'checkout', '--quiet', '--detach', 'FETCH_HEAD')
-    if ((Invoke-Native $git @('-C', 'B:\src', 'rev-parse', 'HEAD')) -ne $Commit) { throw 'Checkout SHA mismatch.' }
-    foreach ($name in @('windows-archive.ps1','windows-toolchain.ps1','windows-toolchain.json')) {
-        $path = "B:\src\scripts\$name"
-        if (!(Test-Path -LiteralPath $path) -or
-            ([IO.File]::ReadAllText($path) -replace "`r`n", "`n") -cne
-            ([IO.File]::ReadAllText("$PSScriptRoot\$name") -replace "`r`n", "`n")) {
-            throw "Use the build scripts and toolchain manifest from commit $Commit ($name differs)."
+    if ($Commit -eq $head) {
+        Write-Host "Building the working tree at $root (HEAD $head)"
+        Initialize-BuildCheckout $git $root $verifyFiles
+        $junctionNames += 'src'
+        [void](New-Item -ItemType Junction -Path 'B:\src' -Target $root)
+    } else {
+        Write-Host "Checking out commit $Commit in the temporary build directory"
+        [void][IO.Directory]::CreateDirectory('B:\src')
+        Invoke-Native $git @('-C', 'B:\src', 'init', '--quiet')
+        Invoke-Native $git @('-C', 'B:\src', 'config', 'core.autocrlf', 'false')
+        Invoke-Native $git @('-C', 'B:\src', 'fetch', '--quiet', '--no-tags', '--depth=1', '--update-shallow', $source, $Commit)
+        Invoke-Native $git @('-C', 'B:\src', 'checkout', '--quiet', '--detach', 'FETCH_HEAD')
+        if ((Invoke-Native $git @('-C', 'B:\src', 'rev-parse', 'HEAD')) -ne $Commit) { throw 'Checkout SHA mismatch.' }
+        foreach ($name in @('windows-archive.ps1','windows-toolchain.ps1','windows-toolchain.json')) {
+            $path = "B:\src\scripts\$name"
+            if (!(Test-Path -LiteralPath $path) -or
+                ([IO.File]::ReadAllText($path) -replace "`r`n", "`n") -cne
+                ([IO.File]::ReadAllText("$PSScriptRoot\$name") -replace "`r`n", "`n")) {
+                throw "Use the build scripts and toolchain manifest from commit $Commit ($name differs)."
+            }
         }
+        Invoke-Native $git @('-C', 'B:\src', '-c', 'core.autocrlf=false', 'submodule', 'update', '--init', '--recursive')
     }
-    Invoke-Native $git @('-C', 'B:\src', '-c', 'core.autocrlf=false', 'submodule', 'update', '--init', '--recursive')
     $env:SOURCE_DATE_EPOCH = Invoke-Native $git @('-C', 'B:\src', 'show', '-s', '--format=%ct', 'HEAD')
     Push-Location -LiteralPath 'B:\src'
     try { Invoke-Native 'B:\git\usr\bin\bash.exe' @('--noprofile', '--norc', 'scripts/windows-archive-build.sh') }
@@ -246,7 +288,7 @@ try {
 
     $qt = 'B:\src\frontends\qt'
     $bundle = [IO.Directory]::CreateDirectory('B:\release').FullName
-    [IO.Directory]::Move("$qt\build\windows", "$bundle\windows")
+    [IO.Directory]::Move("$env:BITBOX_QT_BUILD_DIR/windows", "$bundle\windows")
     Copy-Item -LiteralPath @('B:\src\APP_VERSION', "$qt\resources\win\icon.ico",
         "$qt\setup.nsi", "$qt\sign-windows-release.py") -Destination $bundle
 
@@ -267,7 +309,7 @@ try {
     }
     foreach ($key in $original.Keys) { [Environment]::SetEnvironmentVariable($key, $original[$key]) }
     if ($mapped) { Invoke-Native $subst @('B:', '/D') }
-    # cmd's rmdir removes directory junctions themselves. Never recurse through a tool installation.
+    # Unlink tool and source junctions before removing the temporary build directory.
     if ($work -and [IO.Directory]::Exists($work)) {
         foreach ($name in $junctionNames) {
             $junction = Join-Path $work $name

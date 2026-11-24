@@ -13,6 +13,8 @@ call "%VSROOT%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
 set "QMAKE=qmake.exe"
 set "NMAKE=nmake.exe"
 set "QMAKE_CONFIG="
+set "BUILD_DIR=build"
+set "PROJECT=..\BitBox.pro"
 set "CRT=%VCToolsRedistDir%\x64\Microsoft.VC143.CRT"
 goto compile
 
@@ -34,11 +36,13 @@ set "WindowsSdkVerBinPath=%WindowsSdkDir%bin\%BITBOX_SDK_VERSION%\"
 set "QMAKE=%BITBOX_QT_BIN%\qmake.exe"
 set "NMAKE=%BITBOX_VC_BIN%\nmake.exe"
 set "CRT=%BITBOX_CRT%"
+set "BUILD_DIR=%BITBOX_QT_BUILD_DIR%"
+set "PROJECT=B:\src\frontends\qt\BitBox.pro"
 set "QMAKE_CONFIG=-qtconf B:/qt-build.conf -spec win32-msvc CONFIG+=bitbox_release_archive"
 
 :compile
-cd build || exit /b 1
-"%QMAKE%" ..\BitBox.pro %QMAKE_CONFIG% || exit /b 1
+cd /d "%BUILD_DIR%" || exit /b 1
+"%QMAKE%" "%PROJECT%" %QMAKE_CONFIG% || exit /b 1
 "%NMAKE%" || exit /b 1
 for %%F in (msvcp140.dll msvcp140_1.dll msvcp140_2.dll msvcp140_atomic_wait.dll msvcp140_codecvt_ids.dll vccorlib140.dll vcruntime140.dll vcruntime140_1.dll) do (
     copy /y "%CRT%\%%F" windows\ >nul || exit /b 1

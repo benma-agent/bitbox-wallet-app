@@ -25,6 +25,8 @@ Session.vim
 # Temporary
 .netrwhist
 *~
+# aqt writes this log in the checkout when installing Qt for the Windows build.
+/aqtinstall.log
 # Auto-generated tag files
 tags
 # Persistent undo

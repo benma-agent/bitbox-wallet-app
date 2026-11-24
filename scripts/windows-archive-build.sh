@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Run by windows-archive.ps1 inside the clean checkout.
+# Run by windows-archive.ps1 with the source tree at B:/src.
 set -euo pipefail
 
 export PATH

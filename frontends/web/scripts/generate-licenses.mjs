@@ -140,13 +140,16 @@ dependencies.sort((a, b) => (
   || 0
 ));
 
-mkdirSync(join(root, 'public'), { recursive: true });
-
-writeFileSync(
-  output,
-  JSON.stringify(dependencies, null, 2) + '\n',
-  'utf8'
-);
+const contents = JSON.stringify(dependencies, null, 2) + '\n';
+const check = process.argv.includes('--check');
+if (check) {
+  if (readFileSync(output, 'utf8').replaceAll('\r\n', '\n') !== contents) {
+    throw new Error(`Run npm run generate-licenses to update ${output}.`);
+  }
+} else {
+  mkdirSync(join(root, 'public'), { recursive: true });
+  writeFileSync(output, contents, 'utf8');
+}
 
 const versionCount = dependencies.reduce(
   (count, dependency) => count + dependency.versions.length,
@@ -154,5 +157,5 @@ const versionCount = dependencies.reduce(
 );
 
 console.log(
-  `Generated ${output} (${dependencies.length} license entries, ${versionCount} package versions)`
+  `${check ? 'Verified' : 'Generated'} ${output} (${dependencies.length} license entries, ${versionCount} package versions)`
 );

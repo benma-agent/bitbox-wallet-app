@@ -40,7 +40,7 @@ buildweb:
 	rm -rf ${WEBROOT}/build
 	cd ${WEBROOT} && npm ci --ignore-scripts
 	cd ${WEBROOT} && npm run check-licenses
-	cd ${WEBROOT} && npm run generate-licenses && git diff --exit-code -- frontends/web/public/licenses-npm.json
+	cd ${WEBROOT} && npm run generate-licenses $(NPM_LICENSE_ARGS) && git diff --exit-code -- frontends/web/public/licenses-npm.json
 	cd ${WEBROOT} && npm run build
 webdev:
 	cd ${WEBROOT} && $(MAKE) dev
@@ -72,9 +72,9 @@ qt-windows: check-go-vendor
 .PHONY: qt-windows-archive qt-windows-release-payload
 qt-windows-archive:
 	powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File scripts/windows-archive.ps1
-# The release entry point invokes this in a clean checkout with the verified toolchain.
+# The release entry point invokes this with the verified toolchain.
 qt-windows-release-payload: check-go-vendor
-	$(MAKE) buildweb
+	$(MAKE) buildweb NPM_LICENSE_ARGS="-- --check"
 	cd frontends/qt && bash make_windows.sh payload
 android:
 	cd frontends/android && ${MAKE} apk-debug

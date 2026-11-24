@@ -293,6 +293,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        env:
+          # Build the committed bytes through the runner's working tree.
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
       - name: Read Windows toolchain versions
         id: pins
         shell: pwsh
@@ -334,6 +339,9 @@ jobs:
       - name: Build Windows release archive
         shell: powershell
         run: |
+          # Go records untracked files in libserver.dll's vcs.modified flag.
+          $changes = git -c core.autocrlf=false status --porcelain
+          if ($LASTEXITCODE -ne 0 -or $changes) { throw "Expected a clean CI checkout. $changes" }
           # Exercise the local entry point with conflicting developer-shell settings.
           $env:CC = 'unverified-compiler.exe'
           $env:GOFLAGS = '-invalid-build-flag'

@@ -97,9 +97,9 @@ and download links. Install or replace the reported components manually, then re
 For missing or mismatched MinGW files, run the versioned Chocolatey command printed by the
 check in an administrator PowerShell window. Windows CI installs the same package version.
 Visual Studio 2022 Build Tools, Community and Enterprise can supply the required components.
-The build accepts different Git for Windows versions. It uses Git from the selected installation
-to check out the commit and submodules, Git Bash to run the Make recipes, and GNU tar and gzip
-when packaging. The pinned tool versions and file hashes are in
+The build accepts different Git for Windows versions. It uses Git to identify the source commit
+and initialize missing submodules, Git Bash to run the Make recipes, and GNU tar and gzip when
+packaging. The pinned tool versions and file hashes are in
 [windows-toolchain.json](../scripts/windows-toolchain.json).
 
 The script checks standard install locations, registered Visual Studio and SDK locations, and tools
@@ -114,21 +114,23 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-
 ```
 
 If you already use `make` in Git Bash, `make qt-windows-archive` calls the same entry point. The
-build itself uses GNU Make from the verified MinGW installation. The script checks out the current
-Git commit and its pinned submodules in a temporary directory using the line endings in Git.
-It uses the committed source, including `APP_VERSION`. Drive `B:` must be free. The script maps
-it temporarily to give both builders the same paths and uses directory junctions to the verified
-installations. Git Bash, GNU Make, the compilers, qmake and windeployqt run with a build-specific
-environment. The script checks the deployed EXEs and DLLs against the release file list. If Qt
+build itself uses GNU Make from the verified MinGW installation. When building the current
+commit, the script uses your working tree, including local edits and initialized submodules.
+Drive `B:` must be free. The script temporarily maps `B:\src` to your checkout and gives the
+verified tools fixed paths. It refreshes the web build and npm dependencies in `frontends/web`.
+Qt and the Go server write their native outputs to a fresh temporary build directory.
+Git Bash, GNU Make, the compilers, qmake and windeployqt run with a build-specific environment.
+The script checks the deployed EXEs and DLLs against the release file list. If Qt
 deploys additional libraries, the error names them so you can adjust the kit's optional modules.
-The build fetches the project's locked npm dependencies and verifies the vendored Go modules in
-temporary directories. The release archive uses the commit timestamp and normalized tar metadata.
+The build verifies the vendored Go modules in a temporary directory. The release archive uses the
+commit timestamp and normalized tar metadata.
 
 The command prints the archive SHA-256 and writes
-`frontends\qt\build\BitBox-<APP_VERSION>-win64-build.tar.gz`. From an extracted source ZIP,
-pass `-Commit <full-40-character-SHA>` and, for a fork, `-Repository owner/repo`
-to fetch that revision. Run the scripts from the revision being built. If Windows marks a downloaded
-ZIP as an Internet file, select **Unblock** in its Properties before extracting it.
+`frontends\qt\build\BitBox-<APP_VERSION>-win64-build.tar.gz`. An explicit `-Commit` different
+from the checkout's `HEAD` uses a temporary checkout of that local commit. From a source ZIP,
+pass `-Commit <full-40-character-SHA>` and, for a fork, `-Repository owner/repo` to fetch the
+revision into a temporary checkout. Run the scripts from the revision being built. If Windows marks
+a downloaded ZIP as an Internet file, select **Unblock** in its Properties before extracting it.
 
 For an unsigned development installer built from the working tree, install NSIS, put its
 `makensis` and the development tools on Git Bash's `PATH`, and run `make qt-windows`. This writes
@@ -136,7 +138,11 @@ For an unsigned development installer built from the working tree, install NSIS,
 
 ### Verify the Windows build
 
-For a two-PC check, use the same commit on both PCs. On the first PC, build into a new directory.
+For a two-PC check, use clean working trees at the same commit and the recorded submodule revisions.
+Go records the commit and working-tree modification status in `libserver.dll`. Verification checks
+submodule revisions and reports tracked files whose line endings differ from the Git index.
+For a new Windows checkout, `git clone -c core.autocrlf=false <repository-url>` preserves the
+committed line endings, as in CI. On the first PC, build into a new directory.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-archive.ps1 -OutputDirectory C:\builds\bitbox-reference

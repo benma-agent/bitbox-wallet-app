@@ -1,0 +1,9 @@
+# Git Bash reads these build scripts directly from the Windows working tree.
+/scripts/check-go-vendor.sh text eol=lf
+/scripts/windows-archive-build.sh text eol=lf
+/frontends/qt/*.sh text eol=lf
+
+# The Windows release copies these text files byte-for-byte.
+/APP_VERSION text eol=lf
+/frontends/qt/setup.nsi text eol=lf
+/frontends/qt/sign-windows-release.py text eol=lf
