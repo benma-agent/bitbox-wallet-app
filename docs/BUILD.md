@@ -139,10 +139,9 @@ For an unsigned development installer built from the working tree, install NSIS,
 ### Verify the Windows build
 
 For a two-PC check, use clean working trees at the same commit and the recorded submodule revisions.
-Go records the commit and working-tree modification status in `libserver.dll`. Verification checks
-submodule revisions and reports tracked files whose line endings differ from the Git index.
-For a new Windows checkout, `git clone -c core.autocrlf=false <repository-url>` preserves the
-committed line endings, as in CI. On the first PC, build into a new directory.
+Go records the commit and working-tree modification status in `libserver.dll`. The release build
+checks tracked files in the checkout and its submodules for unexpected line endings before
+compiling. Verification also checks submodule revisions. On the first PC, build into a new directory.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-archive.ps1 -OutputDirectory C:\builds\bitbox-reference

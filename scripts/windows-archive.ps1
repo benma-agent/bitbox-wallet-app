@@ -27,15 +27,24 @@ function Invoke-Native([string] $Program, [string[]] $Arguments) {
 }
 
 function Initialize-BuildCheckout([string] $Git, [string] $Checkout, [bool] $VerifySource) {
-    if ($VerifySource) {
-        # Git can report a clean checkout even when it has converted LF to CRLF on disk.
-        $converted = @(Invoke-Native $Git @('-C', $Checkout, 'ls-files', '--eol') | Where-Object {
-            $_ -match '^i/(lf|crlf|mixed)\s+w/(lf|crlf|mixed)\s' -and $Matches[1] -ne $Matches[2]
-        })
-        if ($converted.Count) {
-            $first = ($converted[0] -split "\t", 2)[1]
-            Write-Warning "$Checkout has $($converted.Count) tracked files with different line endings on disk, including $first. Verification compares the built bytes."
+    # Git can report a clean checkout even when it has converted LF to CRLF on disk.
+    $converted = @(Invoke-Native $Git @('-C', $Checkout, 'ls-files', '--eol') | Where-Object {
+        if ($_ -match '^i/(lf|crlf|mixed|none)\s+w/(lf|crlf|mixed)\s+attr/([^\t]*)\t') {
+            $index, $working, $attributes = $Matches[1], $Matches[2], $Matches[3]
+            $expected = if ($index -eq 'none') { 'lf' } else { $index }
+            # Forced text converts even mixed input. Git preserves existing CRLF in text=auto blobs.
+            if ($attributes.Trim() -eq 'text eol=crlf' -or
+                ($expected -eq 'lf' -and $attributes -match '\beol=crlf\b')) {
+                $expected = 'crlf'
+            }
+            $working -ne $expected
         }
+    })
+    if ($converted.Count) {
+        $examples = ($converted | Select-Object -First 5) -join [Environment]::NewLine
+        throw ("Unexpected line endings in $($converted.Count) tracked paths under $Checkout.`n" +
+            "Refresh your clean checkout or correct the line endings in edited files, then rebuild.`n" +
+            "Run 'git ls-files --eol' there to see the index (i/) and working tree (w/).`n$examples")
     }
     if (!(Test-Path -LiteralPath "$Checkout\.gitmodules")) { return }
     # Initialize missing submodules individually to preserve work in populated submodules.
@@ -46,7 +55,7 @@ function Initialize-BuildCheckout([string] $Git, [string] $Checkout, [bool] $Ver
         if (!$entry.EndsWith(' 0')) { throw "Resolve the submodule conflict at $Checkout\$path." }
         $module = Join-Path $Checkout $path
         if (!(Test-Path -LiteralPath "$module\.git")) {
-            Invoke-Native $Git @('-C', $Checkout, '-c', 'core.autocrlf=false', 'submodule', 'update', '--init', '--checkout', '--', $path)
+            Invoke-Native $Git @('-C', $Checkout, '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'submodule', 'update', '--init', '--checkout', '--', $path)
         }
         if ($VerifySource) {
             $expected = Invoke-Native $Git @('-C', $Checkout, 'rev-parse', '--verify', "HEAD:$path")
@@ -279,7 +288,7 @@ try {
                 throw "Use the build scripts and toolchain manifest from commit $Commit ($name differs)."
             }
         }
-        Invoke-Native $git @('-C', 'B:\src', '-c', 'core.autocrlf=false', 'submodule', 'update', '--init', '--recursive')
+        Initialize-BuildCheckout $git 'B:\src' $verifyFiles
     }
     $env:SOURCE_DATE_EPOCH = Invoke-Native $git @('-C', 'B:\src', 'show', '-s', '--format=%ct', 'HEAD')
     Push-Location -LiteralPath 'B:\src'

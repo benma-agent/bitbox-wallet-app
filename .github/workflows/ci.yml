@@ -294,10 +294,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         env:
-          # Build the committed bytes through the runner's working tree.
+          # Exercise the repository's checkout rules with automatic CRLF conversion enabled.
           GIT_CONFIG_COUNT: '1'
           GIT_CONFIG_KEY_0: core.autocrlf
-          GIT_CONFIG_VALUE_0: 'false'
+          GIT_CONFIG_VALUE_0: 'true'
       - name: Read Windows toolchain versions
         id: pins
         shell: pwsh

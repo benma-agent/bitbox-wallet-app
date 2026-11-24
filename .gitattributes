@@ -1,3 +1,6 @@
+# Vite hashes source bytes and Go embeds text files verbatim. Use the index line endings on every OS.
+* text=auto eol=lf
+
 # Git Bash reads these build scripts directly from the Windows working tree.
 /scripts/go-trimpath.sh text eol=lf
 /scripts/windows-archive-build.sh text eol=lf
