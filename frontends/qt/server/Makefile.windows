@@ -27,11 +27,11 @@ windows-cross:
 	-buildmode="${BUILDMODE}" -o ${LIBNAME}.dll
 
 windows-legacy:
-	CGO_ENABLED=1 go build -mod=vendor -ldflags="-s -w $(GO_VERSION_LDFLAGS)" -buildmode=c-archive \
+	CGO_ENABLED=1 go build -trimpath -mod=vendor -ldflags="-s -w $(GO_VERSION_LDFLAGS)" -buildmode=c-archive \
 		-o libserver.a
 	gcc server.def libserver.a -shared -lwinmm -lhid -lsetupapi -lWs2_32 \
 		-L${BREEZ_LIB_DIR} -lbreez_sdk_spark_bindings \
-		-o libserver.dll -Wl,--out-implib,libserver.lib
+		-o libserver.dll -Wl,--strip-debug,--no-insert-timestamp,--out-implib,libserver.lib
 
 clean:
 	-rm -f ${LIBNAME}.dll

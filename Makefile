@@ -69,9 +69,13 @@ qt-osx: check-go-vendor # run on OSX.
 qt-windows: check-go-vendor
 	$(MAKE) buildweb
 	cd frontends/qt && $(MAKE) windows
-qt-windows-archive: check-go-vendor
+.PHONY: qt-windows-archive qt-windows-release-payload
+qt-windows-archive:
+	powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File scripts/windows-archive.ps1
+# The release entry point invokes this in a clean checkout with the verified toolchain.
+qt-windows-release-payload: check-go-vendor
 	$(MAKE) buildweb
-	cd frontends/qt && $(MAKE) windows-archive
+	cd frontends/qt && bash make_windows.sh payload
 android:
 	cd frontends/android && ${MAKE} apk-debug
 # Create signed .apk and .aab.

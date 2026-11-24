@@ -87,4 +87,4 @@ osx:
 windows:
 	bash make_windows.sh
 windows-archive:
-	bash make_windows.sh archive
+	$(MAKE) -C ../.. qt-windows-archive
