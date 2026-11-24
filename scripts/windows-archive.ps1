@@ -121,13 +121,13 @@ function Test-DeployedBinaries([string] $Payload) {
 }
 
 function Complete-WindowsBuild(
-    [string] $WorkRoot, [string] $Reference, [string] $OutputDirectory, [string] $ArchiveDirectory
+    [string] $WorkRoot, [string] $Checkout, [string] $Reference,
+    [string] $OutputDirectory, [string] $ArchiveDirectory
 ) {
-    $checkout = Join-Path $WorkRoot 'src'
     $bundle = Join-Path $WorkRoot 'release'
     if ($Reference) {
         $go = Join-Path $WorkRoot 'go/bin/go.exe'
-        Push-Location -LiteralPath $checkout
+        Push-Location -LiteralPath $Checkout
         try { Invoke-Native $go @('run', '-mod=vendor', './scripts/verify-windows-build', $bundle, $Reference) }
         finally { Pop-Location }
     }
@@ -154,7 +154,7 @@ function Complete-WindowsBuild(
     try {
         $gitBin = Join-Path $WorkRoot 'git/usr/bin'
         $env:PATH = "$gitBin$([IO.Path]::PathSeparator)$env:PATH"
-        $writer = (Join-Path $checkout 'frontends/qt/archive_windows.sh').Replace('\', '/')
+        $writer = (Join-Path $Checkout 'frontends/qt/archive_windows.sh').Replace('\', '/')
         Invoke-Native (Join-Path $gitBin 'bash.exe') @('--noprofile', '--norc', $writer,
             $bundle.Replace('\', '/'), $pending.Replace('\', '/'))
         $hash = (Get-FileHash -LiteralPath $pending -Algorithm SHA256).Hash
@@ -223,6 +223,8 @@ try {
     $env:GOROOT = 'B:\go'
     $env:GOTOOLCHAIN = 'local'
     $env:GOENV = 'off'
+    # Always use this checkout's vendored modules, even inside a larger Go workspace.
+    $env:GOWORK = 'off'
     $env:GOCACHE = 'B:\temp\go-cache'
     $env:GOPATH = 'B:\temp\gopath'
     $env:CC = 'gcc'
@@ -268,37 +270,36 @@ try {
         if (!$Commit) { $Commit = $head }
     } elseif (!$Commit) { throw 'Supply -Commit with the full Git SHA when running from a source ZIP.' }
     if ($Commit -eq $head) {
-        Write-Host "Building the working tree at $root (HEAD $head)"
-        Initialize-BuildCheckout $git $root $verifyFiles
-        $junctionNames += 'src'
-        [void](New-Item -ItemType Junction -Path 'B:\src' -Target $root)
+        $checkout = $root
+        Write-Host "Building the working tree at $checkout (HEAD $head)"
     } else {
+        $checkout = Join-Path $work 'checkout'
         Write-Host "Checking out commit $Commit in the temporary build directory"
-        [void][IO.Directory]::CreateDirectory('B:\src')
-        Invoke-Native $git @('-C', 'B:\src', 'init', '--quiet')
-        Invoke-Native $git @('-C', 'B:\src', 'config', 'core.autocrlf', 'false')
-        Invoke-Native $git @('-C', 'B:\src', 'fetch', '--quiet', '--no-tags', '--depth=1', '--update-shallow', $source, $Commit)
-        Invoke-Native $git @('-C', 'B:\src', 'checkout', '--quiet', '--detach', 'FETCH_HEAD')
-        if ((Invoke-Native $git @('-C', 'B:\src', 'rev-parse', 'HEAD')) -ne $Commit) { throw 'Checkout SHA mismatch.' }
+        [void][IO.Directory]::CreateDirectory($checkout)
+        Invoke-Native $git @('-C', $checkout, 'init', '--quiet')
+        Invoke-Native $git @('-C', $checkout, 'config', 'core.autocrlf', 'false')
+        Invoke-Native $git @('-C', $checkout, 'fetch', '--quiet', '--no-tags', '--depth=1', '--update-shallow', $source, $Commit)
+        Invoke-Native $git @('-C', $checkout, 'checkout', '--quiet', '--detach', 'FETCH_HEAD')
+        if ((Invoke-Native $git @('-C', $checkout, 'rev-parse', 'HEAD')) -ne $Commit) { throw 'Checkout SHA mismatch.' }
         foreach ($name in @('windows-archive.ps1','windows-toolchain.ps1','windows-toolchain.json')) {
-            $path = "B:\src\scripts\$name"
+            $path = Join-Path $checkout "scripts\$name"
             if (!(Test-Path -LiteralPath $path) -or
                 ([IO.File]::ReadAllText($path) -replace "`r`n", "`n") -cne
                 ([IO.File]::ReadAllText("$PSScriptRoot\$name") -replace "`r`n", "`n")) {
                 throw "Use the build scripts and toolchain manifest from commit $Commit ($name differs)."
             }
         }
-        Initialize-BuildCheckout $git 'B:\src' $verifyFiles
     }
-    $env:SOURCE_DATE_EPOCH = Invoke-Native $git @('-C', 'B:\src', 'show', '-s', '--format=%ct', 'HEAD')
-    Push-Location -LiteralPath 'B:\src'
+    Initialize-BuildCheckout $git $checkout $verifyFiles
+    $env:SOURCE_DATE_EPOCH = Invoke-Native $git @('-C', $checkout, 'show', '-s', '--format=%ct', 'HEAD')
+    Push-Location -LiteralPath $checkout
     try { Invoke-Native 'B:\git\usr\bin\bash.exe' @('--noprofile', '--norc', 'scripts/windows-archive-build.sh') }
     finally { Pop-Location }
 
-    $qt = 'B:\src\frontends\qt'
+    $qt = Join-Path $checkout 'frontends\qt'
     $bundle = [IO.Directory]::CreateDirectory('B:\release').FullName
     [IO.Directory]::Move("$env:BITBOX_QT_BUILD_DIR/windows", "$bundle\windows")
-    Copy-Item -LiteralPath @('B:\src\APP_VERSION', "$qt\resources\win\icon.ico",
+    Copy-Item -LiteralPath @("$checkout\APP_VERSION", "$qt\resources\win\icon.ico",
         "$qt\setup.nsi", "$qt\sign-windows-release.py") -Destination $bundle
 
     if ($verifyFiles -and !$Reference) {
@@ -311,14 +312,14 @@ try {
         }
     }
     $archiveDirectory = if ($writeArchive) { Join-Path $root 'frontends/qt/build' }
-    Complete-WindowsBuild 'B:\' $Reference $OutputDirectory $archiveDirectory
+    Complete-WindowsBuild 'B:\' $checkout $Reference $OutputDirectory $archiveDirectory
 } finally {
     foreach ($key in [Environment]::GetEnvironmentVariables().Keys) {
         if (!$original.ContainsKey($key)) { [Environment]::SetEnvironmentVariable($key, $null) }
     }
     foreach ($key in $original.Keys) { [Environment]::SetEnvironmentVariable($key, $original[$key]) }
     if ($mapped) { Invoke-Native $subst @('B:', '/D') }
-    # Unlink tool and source junctions before removing the temporary build directory.
+    # Unlink tool junctions before removing the temporary build directory.
     if ($work -and [IO.Directory]::Exists($work)) {
         foreach ($name in $junctionNames) {
             $junction = Join-Path $work $name

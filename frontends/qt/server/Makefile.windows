@@ -8,8 +8,6 @@ GOOS=windows
 GOTOOLCHAIN=local
 BREEZ_LIB_DIR=../../../vendor/github.com/breez/breez-sdk-spark-go/breez_sdk_spark/lib/windows-amd64/
 SERVER_OUT ?= .
-SERVER_ARCHIVE_FLAGS := -trimpath -mod=vendor -ldflags="-s -w $(GO_RELEASE_LDFLAGS)" \
-	-buildmode=c-archive
 
 windows:
 	CGO_CFLAGS="${GOWINSECFLAGS} ${CFLAGS}" \
@@ -30,16 +28,8 @@ windows-cross:
 	-buildmode="${BUILDMODE}" -o ${LIBNAME}.dll
 
 windows-legacy:
-ifdef BITBOX_QT_BUILD_DIR
-# Recursive Make can enter this directory through the physical checkout path. Start Go at
-# the release checkout and resolve the output first so Go and gcc use the same archive.
-	CGO_ENABLED=1 bash ../../../scripts/go-trimpath.sh env MSYS2_ARG_CONV_EXCL='*' \
-		go -C B:/src build $(SERVER_ARCHIVE_FLAGS) \
-		-o "$$(cygpath -am "$(SERVER_OUT)/libserver.a")" ./frontends/qt/server
-else
-	CGO_ENABLED=1 bash ../../../scripts/go-trimpath.sh go build $(SERVER_ARCHIVE_FLAGS) \
-		-o "$(SERVER_OUT)/libserver.a"
-endif
+	CGO_ENABLED=1 bash ../../../scripts/go-trimpath.sh go build -trimpath -mod=vendor \
+		-ldflags="-s -w $(GO_RELEASE_LDFLAGS)" -buildmode=c-archive -o "$(SERVER_OUT)/libserver.a"
 	gcc server.def "$(SERVER_OUT)/libserver.a" -shared -lwinmm -lhid -lsetupapi -lWs2_32 \
 		-L${BREEZ_LIB_DIR} -lbreez_sdk_spark_bindings \
 		-o "$(SERVER_OUT)/libserver.dll" -Wl,--strip-debug,--no-insert-timestamp,--out-implib,"$(SERVER_OUT)/libserver.lib"

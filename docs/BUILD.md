@@ -115,9 +115,9 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-
 
 If you already use `make` in Git Bash, `make qt-windows-archive` calls the same entry point. The
 build itself uses GNU Make from the verified MinGW installation. When building the current
-commit, the script uses your working tree, including local edits and initialized submodules.
-Drive `B:` must be free. The script temporarily maps `B:\src` to your checkout and gives the
-verified tools fixed paths. It refreshes the web build and npm dependencies in `frontends/web`.
+commit, the script builds directly in your existing checkout, including local edits and initialized
+submodules. Drive `B:` must be free for the verified tools and temporary build files.
+The script refreshes the web build and npm dependencies in `frontends/web`.
 Qt and the Go server write their native outputs to a fresh temporary build directory.
 Git Bash, GNU Make, the compilers, qmake and windeployqt run with a build-specific environment.
 The script checks the deployed EXEs and DLLs against the release file list. If Qt

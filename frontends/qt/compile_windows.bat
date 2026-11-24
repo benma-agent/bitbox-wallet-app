@@ -1,6 +1,7 @@
 @echo off
 :: Compiles the Qt app. Part of the Windows build, which also compiles/bundles the deps.
 setlocal
+set "PROJECT=%~dp0BitBox.pro"
 if defined BITBOX_VS_ROOT goto release
 
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -14,7 +15,6 @@ set "QMAKE=qmake.exe"
 set "NMAKE=nmake.exe"
 set "QMAKE_CONFIG="
 set "BUILD_DIR=build"
-set "PROJECT=..\BitBox.pro"
 set "CRT=%VCToolsRedistDir%\x64\Microsoft.VC143.CRT"
 goto compile
 
@@ -37,7 +37,6 @@ set "QMAKE=%BITBOX_QT_BIN%\qmake.exe"
 set "NMAKE=%BITBOX_VC_BIN%\nmake.exe"
 set "CRT=%BITBOX_CRT%"
 set "BUILD_DIR=%BITBOX_QT_BUILD_DIR%"
-set "PROJECT=B:\src\frontends\qt\BitBox.pro"
 set "QMAKE_CONFIG=-qtconf B:/qt-build.conf -spec win32-msvc CONFIG+=bitbox_release_archive"
 
 :compile

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Run by windows-archive.ps1 with the source tree at B:/src.
+# Run by windows-archive.ps1 from the checkout being built.
 set -euo pipefail
 
 export PATH
@@ -26,18 +26,6 @@ check_command windeployqt B:/qt/bin/windeployqt.exe
 check_command cl "$BITBOX_VC_BIN/cl.exe"
 check_command link "$BITBOX_VC_BIN/link.exe"
 check_command rc "B:/kits/bin/$BITBOX_SDK_VERSION/x64/rc.exe"
-
-# Check the fixed checkout from which the server build resolves gnark-crypto's
-# importing packages before the assembler rewrites their shared source filenames.
-fields=github.com/consensys/gnark-crypto/ecc/bls12-381
-for package in "$fields/fp" "$fields/fr"; do
-    dir=$(go -C B:/src list -mod=vendor -f '{{.Dir}}' "$package")
-    dir=${dir%$'\r'}
-    if [[ ${dir//\\//} != "B:/src/vendor/$package" ]]; then
-        echo "Expected $package at B:/src/vendor/$package, Go resolved it to '$dir'." >&2
-        exit 1
-    fi
-done
 
 # Command-line make variables propagate to every recursive make, including the Go server.
 exec "$BITBOX_WINDOWS_MAKE" "MAKE=$BITBOX_WINDOWS_MAKE" SHELL=B:/git/usr/bin/bash.exe qt-windows-release-payload
