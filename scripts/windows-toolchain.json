@@ -1,0 +1,162 @@
+{
+  "git": {
+    "install": "Git for Windows with Git Bash",
+    "url": "https://gitforwindows.org/",
+    "commands": ["cmd/git.exe", "usr/bin/bash.exe", "usr/bin/cygpath.exe", "usr/bin/sh.exe"]
+  },
+  "go": {
+    "version": "1.26.10",
+    "install": "Go 1.26.10 for windows-amd64",
+    "url": "https://go.dev/dl/go1.26.10.windows-amd64.msi",
+    "files": {
+      "bin/go.exe": "de14a33fd6ab5937941f0573e5b6537f04d24979aaf1b0557de1005a28cb7add",
+      "pkg/tool/windows_amd64/cgo.exe": "8a4b2731f89de6407248360a14caf25f38847429706244478a3046b34f18d997",
+      "pkg/tool/windows_amd64/compile.exe": "ca310980c26cf8397002a751d3e7af584d1d7120c483e1d5555afb0331088f77",
+      "pkg/tool/windows_amd64/link.exe": "9fbde697aa6901469477e633b0cff9b408b6f38e3b1bc95001c365d08c6a2754"
+    }
+  },
+  "node": {
+    "version": "26.13.1",
+    "install": "Node.js 26.13.1 x64 with bundled npm 11.20.0",
+    "url": "https://nodejs.org/dist/v26.13.1/node-v26.13.1-x64.msi",
+    "files": {
+      "node.exe": "f5109dc868ec38703ad8f305e0aceece717cb60d4889873f434017af4e96cccb",
+      "node_modules/npm/bin/npm-cli.js": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e",
+      "node_modules/npm/package.json": "ec88bdc70390efd52580fc150bbc4c8a66d460e770e89a61ea4540d420f23e6a",
+      "npm": "13372aa943f8eb32c9a8b6f946ed6a49118edd60051321953288b1f35611aefb",
+      "npm.cmd": "21b46c69ad6e2f231f02a9e120f4ba6c8e75fef5a45637103002eab99f888ab8"
+    }
+  },
+  "mingw": {
+    "version": "13.2.0",
+    "install": "MinGW-w64 x64 with GNU Make from Chocolatey",
+    "url": "https://community.chocolatey.org/packages/mingw/13.2.0",
+    "archiveSha256": "a05578fab9068c678ce761e7b2e284d23fa7416a2f4f36349e05e506c944e2c7",
+    "files": {
+      "bin/ar.exe": "ce6c5073a12c360fad526c0a406a335e4a8d9fb9fc33dcf67e2214d64acef498",
+      "bin/as.exe": "a2f49da17593e7f5181f69e459f02b697af14af1ce96891a3d44783029bc8c25",
+      "bin/g++.exe": "42a7a7560a1de5e2f4ebc88784b04ae17802fef296c0d31b04e7a767e1e9191f",
+      "bin/gcc.exe": "b72bc0885782d829474e411596d69d6e863d4f57b2db806afdba51178f92cfec",
+      "bin/ld.exe": "908e752cb05a5f0e91af25bb2a5adb4a191701e36eee74c9e8f65bd77b04a4a3",
+      "bin/mingw32-make.exe": "97fa8fba1b47850970fcfe63ca6d923171356e74f7aa1781e2752168eae0c706",
+      "libexec/gcc/x86_64-w64-mingw32/13.2.0/cc1.exe": "0b10ea68966d8f712196320a40bad2f08dded07caf9f778b0c19afba157ebe56",
+      "libexec/gcc/x86_64-w64-mingw32/13.2.0/collect2.exe": "61c20d8deb92b2828b2226602122b9e32b797527a7c557f2ecbcc2e66103168b",
+      "x86_64-w64-mingw32/bin/as.exe": "a2f49da17593e7f5181f69e459f02b697af14af1ce96891a3d44783029bc8c25",
+      "x86_64-w64-mingw32/bin/ld.exe": "908e752cb05a5f0e91af25bb2a5adb4a191701e36eee74c9e8f65bd77b04a4a3"
+    }
+  },
+  "qt": {
+    "version": "6.8.2",
+    "install": "Qt 6.8.2 MSVC 2022 64-bit with Qt WebEngine, Qt WebChannel and Qt Positioning",
+    "url": "https://download.qt.io/official_releases/online_installers/qt-online-installer-windows-x64-online.exe",
+    "arch": "win64_msvc2022_64",
+    "modules": [
+      "qtwebengine",
+      "qtwebchannel",
+      "qtpositioning"
+    ],
+    "runtime": [
+      "D3Dcompiler_47.dll",
+      "Qt6Core.dll",
+      "Qt6Gui.dll",
+      "Qt6Network.dll",
+      "Qt6OpenGL.dll",
+      "Qt6Positioning.dll",
+      "Qt6PrintSupport.dll",
+      "Qt6Qml.dll",
+      "Qt6QmlMeta.dll",
+      "Qt6QmlModels.dll",
+      "Qt6QmlWorkerScript.dll",
+      "Qt6Quick.dll",
+      "Qt6QuickWidgets.dll",
+      "Qt6Svg.dll",
+      "Qt6WebChannel.dll",
+      "Qt6WebEngineCore.dll",
+      "Qt6WebEngineWidgets.dll",
+      "Qt6Widgets.dll",
+      "QtWebEngineProcess.exe",
+      "generic/qtuiotouchplugin.dll",
+      "iconengines/qsvgicon.dll",
+      "imageformats/qgif.dll",
+      "imageformats/qico.dll",
+      "imageformats/qjpeg.dll",
+      "imageformats/qsvg.dll",
+      "networkinformation/qnetworklistmanager.dll",
+      "opengl32sw.dll",
+      "platforms/qwindows.dll",
+      "position/qtposition_nmea.dll",
+      "position/qtposition_positionpoll.dll",
+      "position/qtposition_winrt.dll",
+      "qmltooling/qmldbg_debugger.dll",
+      "qmltooling/qmldbg_inspector.dll",
+      "qmltooling/qmldbg_local.dll",
+      "qmltooling/qmldbg_messages.dll",
+      "qmltooling/qmldbg_native.dll",
+      "qmltooling/qmldbg_nativedebugger.dll",
+      "qmltooling/qmldbg_preview.dll",
+      "qmltooling/qmldbg_profiler.dll",
+      "qmltooling/qmldbg_quickprofiler.dll",
+      "qmltooling/qmldbg_server.dll",
+      "qmltooling/qmldbg_tcp.dll",
+      "styles/qmodernwindowsstyle.dll",
+      "tls/qcertonlybackend.dll",
+      "tls/qschannelbackend.dll"
+    ],
+    "files": {
+      "bin/Qt6Core.dll": "130c6ef3c126e97aaec1a5cb1c638d7404473a3dda837d6e161c69db7a5bc339",
+      "bin/Qt6Positioning.dll": "13da48746f6b5b204829ac8fb138ac9d83c8d35376a16be228469430be14f0c6",
+      "bin/Qt6WebChannel.dll": "6f7b232c882cb5296884aad28344d0c1690be9dd84faa6a9f39444d2592e6766",
+      "bin/Qt6WebEngineCore.dll": "5dca45b24c6a674fb43cb2a12e3a5ce519df6faeb110f9b87a0a5f814b9714bb",
+      "bin/QtWebEngineProcess.exe": "6cf7aebe7aa2dd592c319d171f06ef067647d8f394d8b2a4526ba3f961e73ee5",
+      "bin/d3dcompiler_47.dll": "e994847e01a6f1e4cbdc5a864616ac262f67ee4f14db194984661a8d927ab7f4",
+      "bin/lconvert.exe": "c956254ceed7a8083249c55289178bb283524ead252d36c5dc91e84aa09faada",
+      "bin/moc.exe": "7d06eef1ad3f60221885bbd1ef87936369ca3089b8c28845372c495c5ecc9949",
+      "bin/qmake.exe": "514584d7a020b353311d7596b04650cecad00a78962acee0b975d570b2753849",
+      "bin/qtpaths.exe": "2f1df1e581b79be7bd7765b5e0635e34a8b2964f9a954445d7ad42f4056f34a4",
+      "bin/rcc.exe": "e41b1995a8b543a27573439e650269e24773d72d97686c0c4774caa172d12b22",
+      "bin/windeployqt.exe": "03de4a5b385d19338432770471ec4d7faf4fc56ff1e5a79f1a771229180a5e85",
+      "plugins/platforms/qwindows.dll": "338b06b75f2ab5a95738ad464d4e3252c72a3b2de1c554e0ec223d83209e124e"
+    }
+  },
+  "msvc": {
+    "version": "14.44.35230.0",
+    "install": "Visual Studio 2022 17.14.45, MSVC v143 x64/x86 C++ build tools",
+    "sha256": "310c13b8238876afb4e823a91112230ee2d2c5a45c431d4062af7aadedff9c4c",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/95995f57-8355-4ff5-8d90-a7e1669fb3b3/310c13b8238876afb4e823a91112230ee2d2c5a45c431d4062af7aadedff9c4c/vs_BuildTools.exe",
+    "directory": "14.44.35207",
+    "files": {
+      "bin/Hostx64/x64/c1xx.dll": "a9348b973d399e7e042a79be7e22dc054e008381a2ef3d9f394300e41aa47470",
+      "bin/Hostx64/x64/c2.dll": "e2fdfd6505cd6e9b670922733a914fbf22cae5d226943290548f24eaf699267a",
+      "bin/Hostx64/x64/cl.exe": "e87e78b3ef6580b75aebda843f8a22e874612d9f766344046551399f898eb226",
+      "bin/Hostx64/x64/lib.exe": "69317eda3d44fd723b959c87d5a3b0617e3b7be70b02ff3f51ec45288ec559d2",
+      "bin/Hostx64/x64/link.exe": "49a5df25c3182a22684375b1d62a025016deffccea247894fe5ca2c85610c6a6",
+      "bin/Hostx64/x64/nmake.exe": "f54573f6570c8c8831f3e4d2375fccb35590759c9684b5ae38074f5e91610aee"
+    }
+  },
+  "redist": {
+    "version": "14.44.35211",
+    "install": "VS 2022 17.14.45 x64 VC143 CRT files under VC/Redist/MSVC/14.44.35112",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/95995f57-8355-4ff5-8d90-a7e1669fb3b3/310c13b8238876afb4e823a91112230ee2d2c5a45c431d4062af7aadedff9c4c/vs_BuildTools.exe",
+    "files": {
+      "msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
+      "msvcp140_1.dll": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
+      "msvcp140_2.dll": "3ea06f0ee098b4823cb79599df3780e7f23cce52c19aac31d2a0d47efe33a5e9",
+      "msvcp140_atomic_wait.dll": "640b2aefced484d0368eea5bdd06addd0658a3a70a49256e560d6923b404a479",
+      "msvcp140_codecvt_ids.dll": "f2069a52880ec885ee7f0511186100eb7fada0411a2b4948fafea7735b878a18",
+      "vccorlib140.dll": "19839407c3fdbc824e5bce189bf68ddf8097f12ec28b757797ffa0415c144ddd",
+      "vcruntime140.dll": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "vcruntime140_1.dll": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f"
+    }
+  },
+  "sdk": {
+    "version": "10.0.26100.9457",
+    "install": "Windows 11 SDK (10.0.26100.0), serviced with VS 2022 17.14.45",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/95995f57-8355-4ff5-8d90-a7e1669fb3b3/310c13b8238876afb4e823a91112230ee2d2c5a45c431d4062af7aadedff9c4c/vs_BuildTools.exe",
+    "directory": "10.0.26100.0",
+    "files": {
+      "x64/mt.exe": "fa74dd31612c78de40169599640fb955ef9ccb9f2dfabf80f100022ff1b8bc22",
+      "x64/rc.exe": "9e2ee68da28b3318f50a9f1008d64567a9b402bda384a007a9b71a3f16bd011b",
+      "x64/rcdll.dll": "4452fa0b470749e6fd70ed2ed2ac859fc243fbe4b67e6875250cfaec64f4388a"
+    }
+  }
+}
