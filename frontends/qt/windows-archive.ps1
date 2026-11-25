@@ -184,11 +184,10 @@ try {
     $sdkInclude = "B:\kits\Include\$($pins.sdk.directory)"
     $sdkLib = "B:\kits\Lib\$($pins.sdk.directory)"
     $env:BITBOX_VC_BIN = "$vc\bin\Hostx64\x64"
-    $env:BITBOX_CRT = 'B:\redist'
     $env:BITBOX_INCLUDE = "$vc\include;$sdkInclude\ucrt;$sdkInclude\shared;$sdkInclude\um;$sdkInclude\winrt;$sdkInclude\cppwinrt"
     $env:BITBOX_LIB = "$vc\lib\x64;$sdkLib\ucrt\x64;$sdkLib\um\x64"
     $systemPath = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
-    $env:BITBOX_COMPILE_PATH = "$env:BITBOX_VC_BIN;$sdkBin;B:\qt\bin;$env:BITBOX_CRT;B:\node;B:\go\bin;B:\mingw\bin;B:\git\cmd;B:\git\usr\bin;$systemPath"
+    $env:BITBOX_COMPILE_PATH = "$env:BITBOX_VC_BIN;$sdkBin;B:\qt\bin;B:\redist;B:\node;B:\go\bin;B:\mingw\bin;B:\git\cmd;B:\git\usr\bin;$systemPath"
     $env:PATH = $env:BITBOX_COMPILE_PATH
     Test-QtPaths 'B:\qt'
     # Additional plug-ins installed for other projects must not expand the release payload.
@@ -205,6 +204,10 @@ try {
         Invoke-Native 'B:\git\usr\bin\bash.exe' @('--noprofile', '--norc', 'frontends/qt/make_windows.sh', $buildDirectory)
     } finally { Pop-Location }
 
+    # Copy exactly the runtime files checked by the toolchain manifest.
+    foreach ($file in $pins.redist.files.PSObject.Properties.Name) {
+        Copy-Item -LiteralPath "B:\redist\$file" -Destination $payload
+    }
     Test-DeployedBinaries $payload
     $version = [IO.File]::ReadAllText("$root\APP_VERSION").Trim()
     $destination = Join-Path $work "BitBox-$version-win64-build.tar.gz"
