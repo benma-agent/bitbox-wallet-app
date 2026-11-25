@@ -68,8 +68,9 @@ qt-osx: check-go-vendor # run on OSX.
 	$(MAKE) osx-sec-check
 .PHONY: qt-windows
 # CI opts into NSIS packaging; local builds only need the archive toolchain.
+# exec makes Bash launch PowerShell, avoiding 32-bit Make's filesystem redirection.
 qt-windows:
-	powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File frontends/qt/windows-archive.ps1 $(if $(filter 1,$(WINDOWS_INSTALLER)),-Installer)
+	exec powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File frontends/qt/windows-archive.ps1 $(if $(filter 1,$(WINDOWS_INSTALLER)),-Installer)
 android:
 	cd frontends/android && ${MAKE} apk-debug
 # Create signed .apk and .aab.
