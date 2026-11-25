@@ -49,6 +49,7 @@ jobs:
       - name: Test build archives
         run: |
           bash frontends/qt/tests/test_windows_archive.sh
+          bash scripts/tests/test_compare_builds.sh
       - name: Install Windows packaging tools
         run: |
           sudo apt-get update
@@ -338,6 +339,7 @@ jobs:
         run: |
           export PATH="/usr/bin:$PATH"
           bash frontends/qt/tests/test_windows_archive.sh
+          bash scripts/tests/test_compare_builds.sh
       - name: Build Windows archive and installer
         run: |
           # Go records untracked files in libserver.dll's vcs.modified flag.
