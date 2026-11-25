@@ -12,7 +12,7 @@ windows:
 	CGO_CFLAGS="${GOWINSECFLAGS} ${CFLAGS}" \
 	CGO_LDFLAGS="${GOWINLDFLAGS} ${LFLAGS}" \
 	GOARCH=${GOARCH} CGO_ENABLED=${CGO} GOOS=${GOOS} GOTOOLCHAIN=${GOTOOLCHAIN} \
-	go build -trimpath -x -mod=vendor \
+	bash ../../../scripts/go-trimpath.sh go build -trimpath -x -mod=vendor \
 	-ldflags "$(GO_RELEASE_LDFLAGS)" \
 	-buildmode="${BUILDMODE}" -o ${LIBNAME}.dll
 
@@ -22,13 +22,13 @@ windows-cross:
 	CGO_CFLAGS="-g ${GOWINSECFLAGS} ${CFLAGS}" \
 	CGO_LDFLAGS="${GOWINLDFLAGS} ${LFLAGS}" \
 	GOARCH=${GOARCH} CGO_ENABLED=${CGO} GOOS=${GOOS} GOTOOLCHAIN=${GOTOOLCHAIN} \
-	go build -trimpath -x -mod=vendor \
+	bash ../../../scripts/go-trimpath.sh go build -trimpath -x -mod=vendor \
 	-ldflags "$(GO_RELEASE_LDFLAGS)" \
 	-buildmode="${BUILDMODE}" -o ${LIBNAME}.dll
 
 windows-legacy:
-	CGO_ENABLED=1 go build -mod=vendor -ldflags="$(GO_RELEASE_LDFLAGS)" -buildmode=c-archive \
-		-o "$(SERVER_OUT)/libserver.a"
+	CGO_ENABLED=1 bash ../../../scripts/go-trimpath.sh go build -trimpath -mod=vendor \
+		-ldflags="$(GO_RELEASE_LDFLAGS)" -buildmode=c-archive -o "$(SERVER_OUT)/libserver.a"
 	gcc server.def "$(SERVER_OUT)/libserver.a" -shared -lwinmm -lhid -lsetupapi -lWs2_32 \
 		-L${BREEZ_LIB_DIR} -lbreez_sdk_spark_bindings \
 		-o "$(SERVER_OUT)/libserver.dll" -Wl,--out-implib,"$(SERVER_OUT)/libserver.lib"

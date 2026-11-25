@@ -11,7 +11,7 @@ linux:
 	CGO_CFLAGS="${GOLNXSECFLAGS} ${CFLAGS}" \
 	CGO_LDFLAGS="${GOLNXLDFLAGS} ${LFLAGS}" \
 	GOARCH=${GOARCH} CGO_ENABLED=${CGO} GOOS=${GOOS} GOTOOLCHAIN=${GOTOOLCHAIN} \
-	go build -trimpath -x -mod=vendor -buildmode=${BUILDMODE} -ldflags \
+	bash ../../../scripts/go-trimpath.sh go build -trimpath -x -mod=vendor -buildmode=${BUILDMODE} -ldflags \
 		"$(GO_RELEASE_LDFLAGS) -extldflags=\"$(GOLNXEXTLDFLAGS)\"" \
 		-o ${LIBNAME}.so
 
