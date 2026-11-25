@@ -334,8 +334,8 @@ jobs:
       - name: Test Windows tool selection
         shell: powershell
         run: ./frontends/qt/tests/test_windows_toolchain.ps1
-      - name: Test Windows release file verification
-        run: go test -mod=vendor ./scripts/verify-windows-build
+      - name: Test Windows release archive and comparison
+        run: PATH="/usr/bin:$PATH" bash frontends/qt/tests/test_windows_archive.sh
       - name: Build Windows release archive
         shell: powershell
         run: |
@@ -361,7 +361,6 @@ jobs:
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
           tar -xzf frontends/qt/build/BitBox-*-win64-build.tar.gz -C "$work"
-          go run -mod=vendor ./scripts/verify-windows-build "$work" frontends/qt/build/BitBox-*-win64-build.tar.gz
           (
               cd "$work"
               version=$(tr -d '\r\n' < APP_VERSION)

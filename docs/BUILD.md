@@ -98,8 +98,8 @@ For missing or mismatched MinGW files, run the versioned Chocolatey command prin
 check in an administrator PowerShell window. Windows CI installs the same package version.
 Visual Studio 2022 Build Tools, Community and Enterprise can supply the required components.
 The build accepts different Git for Windows versions. It uses Git to identify the source commit
-and initialize missing submodules, Git Bash to run the Make recipes, and GNU tar and gzip when
-packaging. The pinned tool versions and file hashes are in
+and initialize missing submodules, Git Bash to run the Make recipes, GNU tar and gzip for
+archives, and GNU diff for verification. The pinned tool versions and file hashes are in
 [windows-toolchain.json](../scripts/windows-toolchain.json).
 
 The script checks standard install locations, registered Visual Studio and SDK locations, and tools
@@ -157,20 +157,20 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\windows-
 Passing `-Reference` enables verification. It accepts the flat release folder or an existing
 unsigned build `.tar.gz`.
 For a CI reference, authenticate GitHub CLI once with `gh auth login` and use `-Verify` alone.
-The script downloads the artifact from a successful `ci.yml` push run for the exact commit and
-reads its tar.gz contents once. Use `-Repository owner/repo` for a fork.
+The script downloads the artifact from a successful `ci.yml` push run for the exact commit.
+Use `-Repository owner/repo` for a fork.
 
-Verification compares case-sensitive relative paths and the SHA-256 of every file under
-`windows/` plus `APP_VERSION`, `icon.ico`, `setup.nsi`, and `sign-windows-release.py`. It reports
-each missing, extra, or changed file and exits with an error on differences. File timestamps,
-tar metadata, and gzip encoding can differ. Verification alone finishes at the comparison.
+Verification compares the entire local release folder with the reference using GNU diff. For a
+`.tar.gz` reference, the script extracts it into a temporary directory that it removes afterward.
+Missing, extra, or changed files cause verification to fail, including changes in line endings.
+File timestamps and permissions can differ. Verification alone finishes at the comparison.
 To produce the Linux signing archive in the same run, add `-CreateArchive` to either verification
 command. The script packages the verified local files after a successful comparison.
 
-To compare two folders you have already built, run the verifier directly from the repository root.
+To compare two folders you have already built, run this in Git Bash.
 
-```powershell
-go run -mod=vendor ./scripts/verify-windows-build C:\builds\bitbox-local C:\builds\bitbox-reference
+```bash
+diff -qr --binary --no-dereference -- /c/builds/bitbox-local /c/builds/bitbox-reference
 ```
 
 ### Sign and package on Linux

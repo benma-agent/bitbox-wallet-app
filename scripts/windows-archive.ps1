@@ -125,11 +125,14 @@ function Complete-WindowsBuild(
     [string] $OutputDirectory, [string] $ArchiveDirectory
 ) {
     $bundle = Join-Path $WorkRoot 'release'
+    $gitBin = Join-Path $WorkRoot 'git/usr/bin'
+    $env:PATH = "$gitBin$([IO.Path]::PathSeparator)$env:PATH"
+    $bash = Join-Path $gitBin 'bash.exe'
+    $qt = (Join-Path $Checkout 'frontends/qt').Replace('\', '/')
     if ($Reference) {
-        $go = Join-Path $WorkRoot 'go/bin/go.exe'
-        Push-Location -LiteralPath $Checkout
-        try { Invoke-Native $go @('run', '-mod=vendor', './scripts/verify-windows-build', $bundle, $Reference) }
-        finally { Pop-Location }
+        Invoke-Native $bash @('--noprofile', '--norc', "$qt/compare_windows.sh",
+            $bundle.Replace('\', '/'), $Reference.Replace('\', '/'))
+        Write-Host "Verified release files against $Reference"
     }
     Test-DeployedBinaries (Join-Path $bundle 'windows')
 
@@ -152,10 +155,7 @@ function Complete-WindowsBuild(
     $destination = Join-Path $output "BitBox-$version-win64-build.tar.gz"
     $pending = Join-Path $output ([IO.Path]::GetRandomFileName())
     try {
-        $gitBin = Join-Path $WorkRoot 'git/usr/bin'
-        $env:PATH = "$gitBin$([IO.Path]::PathSeparator)$env:PATH"
-        $writer = (Join-Path $Checkout 'frontends/qt/archive_windows.sh').Replace('\', '/')
-        Invoke-Native (Join-Path $gitBin 'bash.exe') @('--noprofile', '--norc', $writer,
+        Invoke-Native $bash @('--noprofile', '--norc', "$qt/archive_windows.sh",
             $bundle.Replace('\', '/'), $pending.Replace('\', '/'))
         $hash = (Get-FileHash -LiteralPath $pending -Algorithm SHA256).Hash
         if ([IO.File]::Exists($destination)) {
@@ -172,10 +172,13 @@ if ($OutputDirectory) {
     $OutputDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
     if (Test-Path -LiteralPath $OutputDirectory) { throw "Choose a new output directory. $OutputDirectory already exists." }
 }
-if ($CheckOnly -or $writeArchive) {
-    foreach ($name in @('tar.exe','gzip.exe')) {
-        if (![IO.File]::Exists("$($tools.git)\usr\bin\$name")) { throw "Packaging requires $name in $($tools.git)\usr\bin." }
-    }
+$releaseTools = @()
+if ($CheckOnly -or $writeArchive -or ($verifyFiles -and ![IO.Directory]::Exists($Reference))) {
+    $releaseTools += 'tar.exe', 'gzip.exe'
+}
+if ($CheckOnly -or $verifyFiles) { $releaseTools += 'diff.exe' }
+foreach ($name in $releaseTools) {
+    if (![IO.File]::Exists("$($tools.git)\usr\bin\$name")) { throw "Missing $name in $($tools.git)\usr\bin." }
 }
 $gh = if ($verifyFiles -and !$Reference) {
     $application = Get-Command gh.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
